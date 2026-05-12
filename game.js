@@ -24,7 +24,12 @@ const rebirthCostUI = document.getElementById('rebirth-cost-ui');
 const multiplierUI = document.getElementById('multiplier-ui');
 const buySpiderBtn = document.getElementById('buy-spider-btn');
 const buyAntBtn = document.getElementById('buy-ant-btn');
+const buyBeeBtn = document.getElementById('buy-bee-btn');
 const selectBeetleBtn = document.querySelector('.select-skin-btn[data-skin="beetle"]');
+
+// Socket.io initialization
+const socket = io();
+let remotePlayers = {};
 
 let gameState = 'MENU'; // MENU, SKINS, REBIRTH, LOBBY, PLAYING
 let rebirths = 0;
@@ -107,12 +112,14 @@ function getGrowthMultiplier() {
 }
 
 function getDamageMultiplier() {
+    if (currentSkin === 'bee') return 2.5;
     if (currentSkin === 'ant') return 2.0;
     if (currentSkin === 'spider') return 1.5;
     return 1.0;
 }
 
 function getSpeedMultiplier() {
+    if (currentSkin === 'bee') return 1.4;
     if (currentSkin === 'ant') return 1.25;
     return 1.0;
 }
@@ -131,28 +138,44 @@ function startLobby() {
     lobbyTimerUI.innerText = lobbyTimer;
     lobbyPlayersUI.innerText = lobbyPlayersCount;
 
-    lobbyInterval = setInterval(() => {
-        lobbyTimer--;
-        lobbyTimerUI.innerText = lobbyTimer;
-
-        // Simulate other players joining
-        if (Math.random() > 0.4 && lobbyPlayersCount < 20) {
-            lobbyPlayersCount += Math.floor(Math.random() * 3) + 1;
-            lobbyPlayersUI.innerText = lobbyPlayersCount;
-        }
-
-        if (lobbyTimer <= 0) {
-            clearInterval(lobbyInterval);
-            startGame();
-        }
-    }, 1000);
+    socket.emit('joinLobby');
 }
 
+socket.on('lobbyUpdate', (data) => {
+    lobbyPlayersCount = data.playersCount;
+    lobbyTimer = data.timeLeft;
+    lobbyTimerUI.innerText = lobbyTimer;
+    lobbyPlayersUI.innerText = lobbyPlayersCount;
+});
+
+socket.on('gameStart', (data) => {
+    startGame();
+});
+
+socket.on('playerJoined', (data) => {
+    remotePlayers[data.id] = data;
+});
+
+socket.on('playerMoved', (data) => {
+    remotePlayers[data.id] = data;
+});
+
+socket.on('playerDisconnected', (id) => {
+    delete remotePlayers[id];
+});
+
+socket.on('playerAttacked', (data) => {
+    if (data.id === socket.id) {
+        player.hp -= data.damage;
+    }
+});
+
 cancelMatchmakingBtn.addEventListener('click', () => {
-    clearInterval(lobbyInterval);
     gameState = 'MENU';
     matchmakingMenu.classList.add('hidden');
     menuContainer.classList.remove('hidden');
+    socket.emit('leaveLobby'); // Optional: handle on server
+    location.reload(); // Simplest way to reset state
 });
 
 function startGame() {
@@ -162,7 +185,19 @@ function startGame() {
     mobileControls.classList.remove('hidden');
     player.size = 45;
     player.hp = player.maxHp;
-    initGame(lobbyPlayersCount);
+    
+    socket.emit('playerInit', {
+        x: player.x,
+        y: player.y,
+        size: player.size,
+        angle: player.angle,
+        hp: player.hp,
+        maxHp: player.maxHp,
+        skin: currentSkin,
+        name: "Gracz" + Math.floor(Math.random()*100)
+    });
+
+    initGame();
 }
 
 skinBtn.addEventListener('click', () => {
@@ -183,6 +218,12 @@ function updateSkinUI() {
         buyAntBtn.innerText = currentSkin === 'ant' ? 'Wybrano' : 'Wybierz';
     } else {
         buyAntBtn.innerText = 'Kup (1000 pkt)';
+    }
+
+    if (ownedSkins.includes('bee')) {
+        buyBeeBtn.innerText = currentSkin === 'bee' ? 'Wybrano' : 'Wybierz';
+    } else {
+        buyBeeBtn.innerText = 'Kup (1500 pkt)';
     }
 
     selectBeetleBtn.innerText = currentSkin === 'beetle' ? 'Wybrano' : 'Wybierz';
@@ -211,6 +252,21 @@ buyAntBtn.addEventListener('click', () => {
         ownedSkins.push('ant');
         currentSkin = 'ant';
         alert('Zakupiono skórkę Mrówki!');
+    } else {
+        alert('Brakuje Ci punktów!');
+    }
+    updateSkinUI();
+    saveGame();
+});
+
+buyBeeBtn.addEventListener('click', () => {
+    if (ownedSkins.includes('bee')) {
+        currentSkin = 'bee';
+    } else if (totalEaten >= 1500) {
+        totalEaten -= 1500;
+        ownedSkins.push('bee');
+        currentSkin = 'bee';
+        alert('Zakupiono skórkę Pszczoły!');
     } else {
         alert('Brakuje Ci punktów!');
     }
@@ -269,7 +325,7 @@ doRebirthBtn.addEventListener('click', () => {
     }
 });
 
-function initGame(extraPlayers = 0) {
+function initGame() {
     if (buildings.length === 0) {
         generateCity();
         spawnEntities();
@@ -280,11 +336,6 @@ function initGame(extraPlayers = 0) {
     
     // Spawn regular bots
     spawnBots(10);
-    
-    // Spawn "other players" from lobby
-    for(let i=0; i<extraPlayers - 1; i++) {
-        spawnBot(true); // pass true to indicate it's a "player" bot
-    }
     
     requestAnimationFrame(gameLoop);
 }
@@ -375,7 +426,7 @@ function spawnBot(isPlayer = false) {
         );
     } while (collides);
 
-    const skins = ['beetle', 'spider', 'ant'];
+    const skins = ['beetle', 'spider', 'ant', 'bee'];
     const names = ['Killer', 'ProGamer', 'Robal123', 'Slayer', 'Speedy', 'Shadow', 'Hunter', 'Rex', 'Max', 'Ace'];
     bots.push({
         x, y,
@@ -523,6 +574,13 @@ function performShiftAttack() {
             }
         }
     });
+
+    Object.values(remotePlayers).forEach(p => {
+        const dist = Math.sqrt((player.x - p.x)**2 + (player.y - p.y)**2);
+        if (dist < attackRange) {
+            socket.emit('attack', { id: p.id, damage: 25 * skinDmg, type: 'shift' });
+        }
+    });
 }
 
 function performEnterAttack() {
@@ -542,11 +600,32 @@ function performEnterAttack() {
             }
         }
     });
+
+    Object.values(remotePlayers).forEach(p => {
+        const dist = Math.sqrt((player.x - p.x)**2 + (player.y - p.y)**2);
+        if (dist < attackRange) {
+            socket.emit('attack', { id: p.id, damage: baseDamage * skinDmg, type: 'enter' });
+        }
+    });
 }
 
 function updateBots() {
     bots.forEach((bot, idx) => {
         if (bot.dashCooldown > 0) bot.dashCooldown--;
+
+        // Healing in bushes for bots
+        if (bot.hp < bot.maxHp) {
+            let inBush = decorations.some(d => {
+                if (d.type === 'tree') {
+                    const dist = Math.sqrt((bot.x - d.x)**2 + (bot.y - d.y)**2);
+                    return dist < (bot.size/2 + d.size);
+                }
+                return false;
+            });
+            if (inBush) {
+                bot.hp = Math.min(bot.maxHp, bot.hp + 0.05);
+            }
+        }
 
         // Smarter Target Selection
         let targets = [...bots.filter((_, i) => i !== idx), player];
@@ -591,7 +670,7 @@ function updateBots() {
                 const now = Date.now();
                 if (now - bot.lastAttack > 800) {
                     const sizeRatio = bot.size / closest.size;
-                    const botSkinDmg = bot.skin === 'ant' ? 2.0 : (bot.skin === 'spider' ? 1.5 : 1.0);
+                    const botSkinDmg = bot.skin === 'bee' ? 2.5 : (bot.skin === 'ant' ? 2.0 : (bot.skin === 'spider' ? 1.5 : 1.0));
                     closest.hp -= 15 * botSkinDmg * Math.max(0.7, Math.min(1.5, sizeRatio));
                     bot.lastAttack = now;
                 }
@@ -676,8 +755,18 @@ function update() {
 
     if (player.dashCooldown > 0) player.dashCooldown--;
 
-    if (player.isCharging) {
-        player.chargeTime += 16.6; 
+    // Healing in bushes
+    if (player.hp < player.maxHp) {
+        let inBush = decorations.some(d => {
+            if (d.type === 'tree') {
+                const dist = Math.sqrt((player.x - d.x)**2 + (player.y - d.y)**2);
+                return dist < (player.size/2 + d.size);
+            }
+            return false;
+        });
+        if (inBush) {
+            player.hp = Math.min(player.maxHp, player.hp + 0.05); // ~3 HP per second (60fps * 0.05 = 3)
+        }
     }
 
     let dx = 0;
@@ -757,6 +846,15 @@ function update() {
     }
 
     updateBots();
+
+    // Emit update to server
+    socket.emit('updatePlayer', {
+        x: player.x,
+        y: player.y,
+        size: player.size,
+        angle: player.angle,
+        hp: player.hp
+    });
 }
 
 function drawBeetle(x, y, size, angle, color, hp, maxHp) {
@@ -856,6 +954,38 @@ function drawAnt(x, y, size, angle, color, hp, maxHp) {
     ctx.restore();
 }
 
+function drawBee(x, y, size, angle, color, hp, maxHp) {
+    ctx.save();
+    ctx.translate(x, y);
+    const barWidth = size * 1.5;
+    ctx.fillStyle = 'red';
+    ctx.fillRect(-barWidth/2, -size * 0.8, barWidth, 5);
+    ctx.fillStyle = '#0f0';
+    ctx.fillRect(-barWidth/2, -size * 0.8, barWidth * (hp / maxHp), 5);
+    ctx.rotate(angle);
+
+    // Body
+    ctx.fillStyle = '#f1c40f'; // Yellow
+    ctx.beginPath(); ctx.ellipse(0, 0, size * 0.5, size * 0.35, 0, 0, Math.PI * 2); ctx.fill();
+    
+    // Stripes
+    ctx.fillStyle = '#111';
+    ctx.fillRect(-size * 0.2, -size * 0.3, size * 0.1, size * 0.6);
+    ctx.fillRect(size * 0.1, -size * 0.3, size * 0.1, size * 0.6);
+
+    // Wings
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+    ctx.beginPath(); ctx.ellipse(0, -size * 0.3, size * 0.3, size * 0.15, -Math.PI/4, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(0, size * 0.3, size * 0.3, size * 0.15, Math.PI/4, 0, Math.PI * 2); ctx.fill();
+
+    // Eyes
+    ctx.fillStyle = '#000';
+    ctx.beginPath(); ctx.arc(size * 0.3, -size * 0.1, size * 0.05, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(size * 0.3, size * 0.1, size * 0.05, 0, Math.PI * 2); ctx.fill();
+
+    ctx.restore();
+}
+
 function drawEntity(e) {
     ctx.save();
     ctx.translate(e.x, e.y);
@@ -937,7 +1067,8 @@ function draw() {
     });
 
     bots.forEach(bot => {
-        if (bot.skin === 'ant') drawAnt(bot.x, bot.y, bot.size, bot.angle, bot.color, bot.hp, bot.maxHp);
+        if (bot.skin === 'bee') drawBee(bot.x, bot.y, bot.size, bot.angle, bot.color, bot.hp, bot.maxHp);
+        else if (bot.skin === 'ant') drawAnt(bot.x, bot.y, bot.size, bot.angle, bot.color, bot.hp, bot.maxHp);
         else if (bot.skin === 'spider') drawSpider(bot.x, bot.y, bot.size, bot.angle, bot.color, bot.hp, bot.maxHp);
         else drawBeetle(bot.x, bot.y, bot.size, bot.angle, bot.color, bot.hp, bot.maxHp);
         
@@ -951,7 +1082,22 @@ function draw() {
         }
     });
 
-    if (currentSkin === 'ant') drawAnt(player.x, player.y, player.size, player.angle, '#2c3e50', player.hp, player.maxHp);
+    Object.values(remotePlayers).forEach(p => {
+        if (p.skin === 'bee') drawBee(p.x, p.y, p.size, p.angle, p.color || '#3498db', p.hp, p.maxHp);
+        else if (p.skin === 'ant') drawAnt(p.x, p.y, p.size, p.angle, p.color || '#3498db', p.hp, p.maxHp);
+        else if (p.skin === 'spider') drawSpider(p.x, p.y, p.size, p.angle, p.color || '#3498db', p.hp, p.maxHp);
+        else drawBeetle(p.x, p.y, p.size, p.angle, p.color || '#3498db', p.hp, p.maxHp);
+
+        ctx.save();
+        ctx.fillStyle = 'white';
+        ctx.font = `bold ${Math.max(12, p.size * 0.4)}px Arial`;
+        ctx.textAlign = 'center';
+        ctx.fillText(p.name, p.x, p.y - p.size - 10);
+        ctx.restore();
+    });
+
+    if (currentSkin === 'bee') drawBee(player.x, player.y, player.size, player.angle, '#2c3e50', player.hp, player.maxHp);
+    else if (currentSkin === 'ant') drawAnt(player.x, player.y, player.size, player.angle, '#2c3e50', player.hp, player.maxHp);
     else if (currentSkin === 'spider') drawSpider(player.x, player.y, player.size, player.angle, '#2c3e50', player.hp, player.maxHp);
     else drawBeetle(player.x, player.y, player.size, player.angle, '#2c3e50', player.hp, player.maxHp);
     
