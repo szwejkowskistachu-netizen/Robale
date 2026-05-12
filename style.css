@@ -12,6 +12,8 @@ body {
 }
 
 #menu-container, #skin-menu, #rebirth-menu, #matchmaking-menu {
+    position: relative;
+    z-index: 10;
     text-align: center;
     background: rgba(20, 20, 20, 0.95);
     padding: 50px;
