@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Robale - Arena Przetrwania</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="bg-blob blob1"></div>
+    <div class="bg-blob blob2"></div>
+
+    <div id="menu-container">
+        <h1>Robale</h1>
+        <button id="play-btn">Graj Teraz</button>
+        <button id="skin-btn">Sklep ze Skórkami</button>
+        <button id="rebirth-btn">Prestiż: <span id="rebirth-count">0/2</span></button>
+    </div>
+
+    <div id="matchmaking-menu" class="hidden">
+        <h2>Szukanie Graczy...</h2>
+        <div class="loader"></div>
+        <p>Pozostało: <span id="lobby-timer">10</span>s</p>
+        <p>Gracze w lobby: <span id="lobby-players">1</span>/20</p>
+        <button id="cancel-matchmaking-btn">Anuluj</button>
+    </div>
+
+    <div id="rebirth-menu" class="hidden">
+        <h2>System Rebirth</h2>
+        <p>Zbieraj punkty, aby wykonać Rebirth i zyskać stałe wzmocnienia.</p>
+        <p>Wymagane: <span id="rebirth-cost-ui" style="color: #f1c40f;">100</span> pkt</p>
+        <p>Posiadasz: <span id="eaten-count-ui">0</span> pkt</p>
+        <p>Mnożnik Wzrostu: <span id="multiplier-ui" style="color: #2ecc71;">1</span>x</p>
+        <button id="do-rebirth-btn">Wykonaj Rebirth</button>
+        <button id="rebirth-back-btn">Powrót</button>
+    </div>
+
+    <div id="skin-menu" class="hidden">
+        <h2>Garderoba</h2>
+        <div id="skin-list" style="display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; margin-bottom: 20px;">
+            <div class="skin-item">
+                <h3>Żuk</h3>
+                <p style="font-size: 14px;">Domyślny robal</p>
+                <button class="select-skin-btn" data-skin="beetle">Wybierz</button>
+            </div>
+            <div class="skin-item">
+                <h3>Pająk</h3>
+                <p style="font-size: 14px; color: #e74c3c;">+50% DMG</p>
+                <button id="buy-spider-btn">Kup (200 pkt)</button>
+            </div>
+            <div class="skin-item">
+                <h3>Mrówka</h3>
+                <p style="font-size: 14px; color: #e67e22;">+100% DMG & Speed</p>
+                <button id="buy-ant-btn">Kup (1000 pkt)</button>
+            </div>
+        </div>
+        <button id="back-btn">Powrót</button>
+    </div>
+
+    <canvas id="gameCanvas" class="hidden"></canvas>
+
+    <div id="mobile-controls" class="hidden">
+        <div id="joystick-zone">
+            <div id="joystick-base">
+                <div id="joystick-handle"></div>
+            </div>
+        </div>
+        <div id="attack-buttons">
+            <button id="mobile-dash-btn" class="mobile-btn">DASH</button>
+            <button id="mobile-attack-lpm-btn" class="mobile-btn">ATAK 1</button>
+            <button id="mobile-attack-ppm-btn" class="mobile-btn">ATAK 2</button>
+        </div>
+    </div>
+
+    <script src="game.js"></script>
+</body>
+</html>
