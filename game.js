@@ -14,6 +14,9 @@ const menuContainer = document.getElementById('menu-container');
 const skinMenu = document.getElementById('skin-menu');
 const rebirthMenu = document.getElementById('rebirth-menu');
 const matchmakingMenu = document.getElementById('matchmaking-menu');
+const difficultyMenu = document.getElementById('difficulty-menu');
+const diffBtns = document.querySelectorAll('.diff-btn');
+const diffBackBtn = document.getElementById('diff-back-btn');
 const lobbyTimerUI = document.getElementById('lobby-timer');
 const lobbyPlayersUI = document.getElementById('lobby-players');
 const cancelMatchmakingBtn = document.getElementById('cancel-matchmaking-btn');
@@ -51,6 +54,7 @@ let totalEaten = 0;
 let currentSkin = 'beetle';
 let ownedSkins = ['beetle'];
 let kills = 0;
+let difficulty = 'medium'; // easy, medium, hard
 
 const leaderboardUI = document.getElementById('leaderboard');
 
@@ -280,7 +284,25 @@ function getSpeedMultiplier() {
 // Event Listeners
 if (playBtn) {
     playBtn.addEventListener('click', () => {
-        startLobby();
+        if (menuContainer) menuContainer.classList.add('hidden');
+        if (difficultyMenu) difficultyMenu.classList.remove('hidden');
+    });
+}
+
+if (diffBtns) {
+    diffBtns.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            difficulty = e.target.getAttribute('data-diff');
+            if (difficultyMenu) difficultyMenu.classList.add('hidden');
+            startLobby();
+        });
+    });
+}
+
+if (diffBackBtn) {
+    diffBackBtn.addEventListener('click', () => {
+        if (difficultyMenu) difficultyMenu.classList.add('hidden');
+        if (menuContainer) menuContainer.classList.remove('hidden');
     });
 }
 
@@ -617,20 +639,41 @@ function spawnBot(isPlayer = false) {
 
     const skins = ['beetle', 'spider', 'ant', 'bee'];
     const names = ['Killer', 'ProGamer', 'Robal123', 'Slayer', 'Speedy', 'Shadow', 'Hunter', 'Rex', 'Max', 'Ace'];
+    
+    let speedMult = 1.0;
+    let hpVal = 100;
+    let aiSmartness = 1.0;
+    let dmgMult = 1.0;
+
+    if (difficulty === 'easy') { 
+        speedMult = 0.4; 
+        hpVal = 40; 
+        aiSmartness = 0.3;
+        dmgMult = 0.3;
+    } else if (difficulty === 'hard') { 
+        speedMult = 2.0; 
+        hpVal = 250; 
+        aiSmartness = 2.0;
+        dmgMult = 2.5;
+    }
+
     bots.push({
         x, y,
         size: 30 + (isPlayer ? Math.random() * 20 : Math.random() * 100),
-        hp: 100,
-        maxHp: 100,
+        hp: hpVal,
+        maxHp: hpVal,
         angle: Math.random() * Math.PI * 2,
-        speed: 2 + Math.random() * 2,
+        speed: (2 + Math.random() * 2) * speedMult,
         color: isPlayer ? '#3498db' : `hsl(${Math.random() * 360}, 50%, 40%)`,
         lastAttack: 0,
         dashCooldown: 0,
         dashTime: 0,
         skin: skins[Math.floor(Math.random() * skins.length)],
         isPlayer: isPlayer,
-        name: isPlayer ? names[Math.floor(Math.random() * names.length)] + Math.floor(Math.random()*99) : null
+        name: isPlayer ? names[Math.floor(Math.random() * names.length)] + Math.floor(Math.random()*99) : null,
+        kills: 0,
+        aiSmartness: aiSmartness,
+        dmgMult: dmgMult
     });
 }
 
@@ -874,21 +917,31 @@ function updateBots() {
             if (isNaN(angleDiff)) angleDiff = 0;
             while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
             while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-            bot.angle += angleDiff * 0.08;
+            
+            // AI Smartness affects turn speed and decision making
+            bot.angle += angleDiff * 0.08 * (bot.aiSmartness || 1.0);
 
             if (minDist > (bot.size + closest.size) * 0.6) { // Bots must be closer to hit
                 let speed = bot.speed;
                 if (bot.dashTime > 0) { speed *= 3; bot.dashTime--; }
+                
+                // Randomly "stumble" if not smart
+                if ((bot.aiSmartness || 1.0) < 0.5 && Math.random() < 0.02) {
+                    bot.angle += (Math.random() - 0.5) * 2;
+                }
+
                 const nx = bot.x + Math.cos(bot.angle) * speed;
                 const ny = bot.y + Math.sin(bot.angle) * speed;
                 if (!checkCollision(nx, bot.y, bot.size)) bot.x = nx;
                 if (!checkCollision(bot.x, ny, bot.size)) bot.y = ny;
             } else {
                 const now = Date.now();
-                if (now - bot.lastAttack > 1200) { // Slower bot attack rate
+                // Smart bots attack faster
+                const attackDelay = 1200 / (bot.aiSmartness || 1.0);
+                if (now - bot.lastAttack > attackDelay) { 
                     const sizeRatio = bot.size / closest.size;
-                    const botSkinDmg = bot.skin === 'ant' ? 1.5 : (bot.skin === 'spider' ? 1.2 : 0.8); // Reduced bot dmg multipliers
-                    let damage = 10 * botSkinDmg * Math.max(0.5, Math.min(1.2, sizeRatio)); // Reduced base bot damage
+                    const botSkinDmg = bot.skin === 'ant' ? 1.5 : (bot.skin === 'spider' ? 1.2 : 0.8); 
+                    let damage = 10 * botSkinDmg * (bot.dmgMult || 1.0) * Math.max(0.5, Math.min(1.2, sizeRatio)); 
                     
                     // One-shot protection (bots attacking player or other bots)
                     if (damage >= closest.hp && closest.hp === closest.maxHp) {
