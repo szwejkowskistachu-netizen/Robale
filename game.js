@@ -126,9 +126,13 @@ function worldToScreen(x, y) {
 }
 
 function applyPoison(target) {
+    if (target.poisonInterval) {
+        clearInterval(target.poisonInterval);
+    }
+    
     target.poisoned = true;
     let ticks = 0;
-    const poisonInterval = setInterval(() => {
+    target.poisonInterval = setInterval(() => {
         target.hp -= player.poison.damage;
         
         // Visual for poison
@@ -136,8 +140,9 @@ function applyPoison(target) {
 
         ticks++;
         if (ticks >= 6 || target.hp <= 0) {
-            clearInterval(poisonInterval);
+            clearInterval(target.poisonInterval);
             target.poisoned = false;
+            target.poisonInterval = null;
         }
     }, 500);
 }
@@ -847,6 +852,7 @@ function updateBots() {
             // Chase/Attack
             const targetAngle = Math.atan2(closest.y - bot.y, closest.x - bot.x);
             let angleDiff = targetAngle - bot.angle;
+            if (isNaN(angleDiff)) angleDiff = 0;
             while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
             while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
             bot.angle += angleDiff * 0.08;
@@ -1051,6 +1057,7 @@ function update(dt) {
             dy /= mag;
             player.targetAngle = Math.atan2(dy, dx);
             let angleDiff = player.targetAngle - player.angle;
+            if (isNaN(angleDiff)) angleDiff = 0;
             while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
             while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
             player.angle += angleDiff * 0.1;
@@ -1517,11 +1524,16 @@ function gameLoop(timestamp) {
         return;
     }
     if (!lastTime) lastTime = timestamp;
-    const dt = (timestamp - lastTime) / 1000;
+    let dt = (timestamp - lastTime) / 1000;
+    if (dt > 0.1) dt = 0.1; // Cap delta time to prevent physics glitches after freezes/alerts
     lastTime = timestamp;
 
-    update(dt);
-    draw();
+    try {
+        update(dt);
+        draw();
+    } catch (e) {
+        console.error("Critical error in game loop:", e);
+    }
     requestAnimationFrame(gameLoop);
 }
 
