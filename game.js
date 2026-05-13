@@ -73,19 +73,19 @@ let player = {
     baseSpeed: 4,
     angle: 0,
     targetAngle: 0,
-    hp: 100,
-    maxHp: 100,
+    hp: 1000,
+    maxHp: 1000,
     chargeTime: 0,
     isCharging: false,
     lastAttack: 0,
     dashTime: 0,
     dashCooldown: 0,
     lungeTime: 0,
-    lastHp: 100,
-    baseDamage: 25,
+    lastHp: 1000,
+    baseDamage: 50,
     poison: {
         active: false,
-        damage: 2,
+        damage: 5,
         duration: 3000
     }
 };
@@ -753,35 +753,29 @@ function checkCollision(nx, ny, size) {
 
 function performShiftAttack() {
     const now = Date.now();
-    if (now - player.lastAttack < 500) return;
+    if (now - player.lastAttack < 300) return; // Faster attack
     player.lastAttack = now;
-    player.lungeTime = 15; // Trigger lunge
+    player.lungeTime = 15; 
 
-    const attackRange = player.size * 2.5; // Increased range
+    const attackRange = player.size * 3.5; // Huge range
     const skinDmg = getDamageMultiplier();
-    const currentBaseDmg = getDamage(player) * 1.5; // Increased base damage
+    const currentBaseDmg = getDamage(player) * 2; 
     
     bots.forEach(bot => {
         const dist = Math.sqrt((player.x - bot.x)**2 + (player.y - bot.y)**2);
         if (dist < attackRange) {
-            const angleToBot = Math.atan2(bot.y - player.y, bot.x - player.x);
-            let angleDiff = Math.abs(player.angle - angleToBot);
-            while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-            angleDiff = Math.abs(angleDiff);
-
-            if (angleDiff < 1.5) { // More generous angle
-                const sizeRatio = player.size / bot.size;
-                const damage = currentBaseDmg * skinDmg * Math.max(1.0, Math.min(2.0, sizeRatio));
-                bot.hp -= damage;
-                
-                if (currentSkin === 'spider') {
-                    applyPoison(bot);
-                }
-
-                spawnParticles(bot.x, bot.y, bot.color || 'red', 15);
-                hitEffect(bot.x, bot.y);
-                triggerShake(10);
+            // No angle check - hit everything around!
+            const sizeRatio = player.size / bot.size;
+            const damage = currentBaseDmg * skinDmg * Math.max(1.5, Math.min(3.0, sizeRatio));
+            bot.hp -= damage;
+            
+            if (currentSkin === 'spider') {
+                applyPoison(bot);
             }
+
+            spawnParticles(bot.x, bot.y, bot.color || 'red', 15);
+            hitEffect(bot.x, bot.y);
+            triggerShake(12);
         }
     });
 
@@ -833,7 +827,8 @@ function performEnterAttack() {
 }
 
 function updateBots() {
-    bots.forEach((bot, idx) => {
+    for (let idx = bots.length - 1; idx >= 0; idx--) {
+        const bot = bots[idx];
         if (bot.dashCooldown > 0) bot.dashCooldown--;
 
         // Smarter Target Selection
@@ -890,15 +885,12 @@ function updateBots() {
                 }
             }
         } else {
-            // Look for food if no one nearby
+            // Food search...
             let closestFood = null;
             let minFoodDist = Infinity;
             entities.forEach(e => {
                 const d = Math.sqrt((bot.x - e.x)**2 + (bot.y - e.y)**2);
-                if (d < minFoodDist) {
-                    minFoodDist = d;
-                    closestFood = e;
-                }
+                if (d < minFoodDist) { minFoodDist = d; closestFood = e; }
             });
 
             if (closestFood) {
@@ -907,24 +899,19 @@ function updateBots() {
                 while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
                 while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
                 bot.angle += angleDiff * 0.05;
-
                 const nx = bot.x + Math.cos(bot.angle) * bot.speed;
                 const ny = bot.y + Math.sin(bot.angle) * bot.speed;
                 if (!checkCollision(nx, bot.y, bot.size)) bot.x = nx;
                 if (!checkCollision(bot.x, ny, bot.size)) bot.y = ny;
 
-                // Eat food
                 if (minFoodDist < bot.size/2 + closestFood.size/2) {
                     bot.size += closestFood.growth * 0.5;
                     entities.splice(entities.indexOf(closestFood), 1);
-                    setTimeout(() => {
-                        const typeData = {
-                            'white_ball': { name: 'white_ball', size: 15, color: 'white', growth: 2, value: 1 },
-                            'black_ball': { name: 'black_ball', size: 25, color: '#111', growth: 5, value: 3 },
-                            'car': { name: 'car', size: 60, color: '#c0392b', growth: 15, value: 10 }
-                        }[closestFood.type];
-                        spawnEntity(typeData);
-                    }, 3000);
+                    setTimeout(() => spawnEntity({
+                        'white_ball': { name: 'white_ball', size: 15, color: 'white', growth: 2, value: 1 },
+                        'black_ball': { name: 'black_ball', size: 25, color: '#111', growth: 5, value: 3 },
+                        'car': { name: 'car', size: 60, color: '#c0392b', growth: 15, value: 10 }
+                    }[closestFood.type]), 3000);
                 }
             } else {
                 bot.angle += (Math.random() - 0.5) * 0.1;
@@ -936,10 +923,8 @@ function updateBots() {
         }
 
         if (bot.hp <= 0) {
-            if (minDist < bot.size + player.size) {
-                kills++;
-                totalEaten += 50;
-            }
+            kills++;
+            totalEaten += 50;
             bots.splice(idx, 1);
             updateLeaderboard();
             if (bots.length === 0) {
@@ -955,7 +940,7 @@ function updateBots() {
                 }, 100);
             }
         }
-    });
+    }
 }
 
 function spawnBush(x, y) {
