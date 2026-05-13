@@ -33,6 +33,7 @@ const rebirthCostUI = document.getElementById('rebirth-cost-ui');
 const multiplierUI = document.getElementById('multiplier-ui');
 const buySpiderBtn = document.getElementById('buy-spider-btn');
 const buyAntBtn = document.getElementById('buy-ant-btn');
+const buyBeeBtn = document.getElementById('buy-bee-btn');
 const selectBeetleBtn = document.querySelector('.select-skin-btn[data-skin="beetle"]');
 
 // Socket.io initialization
@@ -49,11 +50,15 @@ let rebirths = 0;
 let totalEaten = 0;
 let currentSkin = 'beetle';
 let ownedSkins = ['beetle'];
+let kills = 0;
+
+const leaderboardUI = document.getElementById('leaderboard');
 
 // Lobby variables
 let lobbyTimer = 10;
 let lobbyInterval = null;
 let lobbyPlayersCount = 1;
+let lastTime = 0;
 
 // Mobile controls variables
 let joystickActive = false;
@@ -74,14 +79,114 @@ let player = {
     isCharging: false,
     lastAttack: 0,
     dashTime: 0,
-    dashCooldown: 0
+    dashCooldown: 0,
+    lungeTime: 0,
+    lastHp: 100,
+    baseDamage: 25,
+    poison: {
+        active: false,
+        damage: 2,
+        duration: 3000
+    }
 };
 
 // World data
 const buildings = [];
+const decorations = []; 
 const entities = []; 
 const bots = [];
+const particles = [];
+let screenShake = 0;
 const WORLD_SIZE = 4000;
+
+function spawnParticles(x, y, color, count = 10, speed = 5) {
+    for (let i = 0; i < count; i++) {
+        particles.push({
+            x: x,
+            y: y,
+            vx: (Math.random() - 0.5) * speed,
+            vy: (Math.random() - 0.5) * speed,
+            life: 1.0,
+            decay: 0.02 + Math.random() * 0.03,
+            size: 2 + Math.random() * 5,
+            color: color
+        });
+    }
+}
+
+function worldToScreen(x, y) {
+    const baseZoom = 1.0;
+    const zoom = Math.max(0.3, baseZoom / (1 + (player.size - 45) * 0.003));
+    const camX = player.x;
+    const camY = player.y;
+    return {
+        x: (x - camX) * zoom + canvas.width / 2,
+        y: (y - camY) * zoom + canvas.height / 2
+    };
+}
+
+function applyPoison(target) {
+    target.poisoned = true;
+    let ticks = 0;
+    const poisonInterval = setInterval(() => {
+        target.hp -= player.poison.damage;
+        
+        // Visual for poison
+        spawnParticles(target.x, target.y, '#2ecc71', 5, 2);
+
+        ticks++;
+        if (ticks >= 6 || target.hp <= 0) {
+            clearInterval(poisonInterval);
+            target.poisoned = false;
+        }
+    }, 500);
+}
+
+function getDamage(p) {
+    let missingHp = p.maxHp - p.hp;
+    let bonus = missingHp * 0.05;
+    return (p.baseDamage || 25) + bonus;
+}
+
+function beetleDashHit(enemy) {
+    // Knockback in the direction of the dash
+    const angle = player.angle;
+    enemy.x += Math.cos(angle) * 50;
+    enemy.y += Math.sin(angle) * 50;
+    enemy.hp -= 20;
+    
+    // Add effects since we are improving the feel
+    spawnParticles(enemy.x, enemy.y, 'white', 20);
+    hitEffect(enemy.x, enemy.y);
+    triggerShake(15);
+}
+
+function hitEffect(x, y) {
+    const screenPos = worldToScreen(x, y);
+    const effect = document.createElement("div");
+    effect.className = "hit";
+    effect.style.left = screenPos.x + "px";
+    effect.style.top = screenPos.y + "px";
+    document.body.appendChild(effect);
+    setTimeout(() => {
+        effect.remove();
+    }, 200);
+}
+
+function updateLeaderboard() {
+    if (!leaderboardUI) return;
+    let players = [
+        { name: "Ty", kills: kills },
+        ...bots.map(b => ({ name: b.name || "Bot", kills: b.kills || 0 })),
+        ...Object.values(remotePlayers).map(p => ({ name: p.name || "Gracz", kills: p.kills || 0 }))
+    ];
+    
+    players.sort((a, b) => b.kills - a.kills);
+    
+    leaderboardUI.innerHTML = "<b>Ranking:</b>" + players.slice(0, 5).map(p =>
+        `<div>${p.name} - ${p.kills}</div>`
+    ).join("");
+}
 
 // Persistence
 function saveGame() {
@@ -117,8 +222,23 @@ function loadGame() {
 
 function resizeCanvas() {
     if (canvas) {
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
+        let width = window.innerWidth;
+        let height = window.innerHeight;
+        const ratio = 16 / 9;
+        
+        if (width / height > ratio) {
+            width = height * ratio;
+        } else {
+            height = width / ratio;
+        }
+        
+        canvas.width = width;
+        canvas.height = height;
+        canvas.style.width = width + 'px';
+        canvas.style.height = height + 'px';
+        canvas.style.left = (window.innerWidth - width) / 2 + 'px';
+        canvas.style.top = (window.innerHeight - height) / 2 + 'px';
+        canvas.style.position = 'fixed';
     }
 }
 
@@ -134,12 +254,14 @@ function getGrowthMultiplier() {
 }
 
 function getDamageMultiplier() {
+    if (currentSkin === 'bee') return 3.0;
     if (currentSkin === 'ant') return 2.0;
     if (currentSkin === 'spider') return 1.5;
     return 1.0;
 }
 
 function getSpeedMultiplier() {
+    if (currentSkin === 'bee') return 2.5;
     if (currentSkin === 'ant') return 1.25;
     return 1.0;
 }
@@ -163,8 +285,16 @@ function startLobby() {
     if (typeof socket !== 'undefined' && socket && socket.emit) {
         socket.emit('joinLobby');
     } else {
-        // Fallback for no socket
-        setTimeout(() => startGame(), 1000);
+        // Fallback for no socket - wait 10s as requested
+        let timeLeft = 10;
+        const interval = setInterval(() => {
+            timeLeft--;
+            if (lobbyTimerUI) lobbyTimerUI.innerText = timeLeft;
+            if (timeLeft <= 0) {
+                clearInterval(interval);
+                startGame();
+            }
+        }, 1000);
     }
 }
 
@@ -195,6 +325,8 @@ if (socket) {
     socket.on('playerAttacked', (data) => {
         if (data.id === socket.id) {
             player.hp -= data.damage;
+            spawnParticles(player.x, player.y, 'red', 20);
+            triggerShake(20);
         }
     });
 }
@@ -214,8 +346,11 @@ function startGame() {
     matchmakingMenu.classList.add('hidden');
     canvas.classList.remove('hidden');
     mobileControls.classList.remove('hidden');
+    if (leaderboardUI) leaderboardUI.classList.remove('hidden');
     player.size = 45;
     player.hp = player.maxHp;
+    kills = 0;
+    updateLeaderboard();
     
     if (socket) {
         socket.emit('playerInit', {
@@ -255,6 +390,12 @@ function updateSkinUI() {
         buyAntBtn.innerText = 'Kup (1000 pkt)';
     }
 
+    if (buyBeeBtn && ownedSkins.includes('bee')) {
+        buyBeeBtn.innerText = currentSkin === 'bee' ? 'Wybrano' : 'Wybierz';
+    } else if (buyBeeBtn) {
+        buyBeeBtn.innerText = 'Kup (1500 pkt)';
+    }
+
     if (selectBeetleBtn) {
         selectBeetleBtn.innerText = currentSkin === 'beetle' ? 'Wybrano' : 'Wybierz';
     }
@@ -286,6 +427,23 @@ if (buyAntBtn) {
             ownedSkins.push('ant');
             currentSkin = 'ant';
             alert('Zakupiono skórkę Mrówki!');
+        } else {
+            alert('Brakuje Ci punktów!');
+        }
+        updateSkinUI();
+        saveGame();
+    });
+}
+
+if (buyBeeBtn) {
+    buyBeeBtn.addEventListener('click', () => {
+        if (ownedSkins.includes('bee')) {
+            currentSkin = 'bee';
+        } else if (totalEaten >= 1500) {
+            totalEaten -= 1500;
+            ownedSkins.push('bee');
+            currentSkin = 'bee';
+            alert('Zakupiono skórkę Pszczoły!');
         } else {
             alert('Brakuje Ci punktów!');
         }
@@ -446,7 +604,7 @@ function spawnBot(isPlayer = false) {
         );
     } while (collides);
 
-    const skins = ['beetle', 'spider', 'ant'];
+    const skins = ['beetle', 'spider', 'ant', 'bee'];
     const names = ['Killer', 'ProGamer', 'Robal123', 'Slayer', 'Speedy', 'Shadow', 'Hunter', 'Rex', 'Max', 'Ace'];
     bots.push({
         x, y,
@@ -586,9 +744,11 @@ function performShiftAttack() {
     const now = Date.now();
     if (now - player.lastAttack < 500) return;
     player.lastAttack = now;
+    player.lungeTime = 15; // Trigger lunge
 
-    const attackRange = player.size * 1.5;
+    const attackRange = player.size * 1.8;
     const skinDmg = getDamageMultiplier();
+    const currentBaseDmg = getDamage(player);
     
     bots.forEach(bot => {
         const dist = Math.sqrt((player.x - bot.x)**2 + (player.y - bot.y)**2);
@@ -597,8 +757,16 @@ function performShiftAttack() {
             const angleDiff = Math.abs(player.angle - angleToBot);
             if (angleDiff < 1 || angleDiff > Math.PI * 2 - 1) {
                 const sizeRatio = player.size / bot.size;
-                const damage = 25 * skinDmg * Math.max(0.7, Math.min(1.5, sizeRatio));
+                const damage = currentBaseDmg * skinDmg * Math.max(0.7, Math.min(1.5, sizeRatio));
                 bot.hp -= damage;
+                
+                if (currentSkin === 'spider') {
+                    applyPoison(bot);
+                }
+
+                spawnParticles(bot.x, bot.y, bot.color || 'red', 15);
+                hitEffect(bot.x, bot.y);
+                triggerShake(10);
             }
         }
     });
@@ -612,7 +780,9 @@ function performShiftAttack() {
 }
 
 function performEnterAttack() {
-    const baseDamage = Math.min(100, (player.chargeTime / 5000) * 100);
+    const baseDamageVal = Math.min(100, (player.chargeTime / 5000) * 100);
+    const hpBonus = (player.maxHp - player.hp) * 0.05;
+    const finalBaseDmg = baseDamageVal + hpBonus;
     const attackRange = player.size * 2;
     const skinDmg = getDamageMultiplier();
     
@@ -623,8 +793,16 @@ function performEnterAttack() {
             const angleDiff = Math.abs(player.angle - angleToBot);
             if (angleDiff < 1.5 || angleDiff > Math.PI * 2 - 1.5) {
                 const sizeRatio = player.size / bot.size;
-                const damage = baseDamage * skinDmg * Math.max(0.7, Math.min(1.5, sizeRatio));
+                const damage = finalBaseDmg * skinDmg * Math.max(0.7, Math.min(1.5, sizeRatio));
                 bot.hp -= damage;
+                
+                if (currentSkin === 'spider') {
+                    applyPoison(bot);
+                }
+
+                spawnParticles(bot.x, bot.y, 'orange', 25, 8);
+                hitEffect(bot.x, bot.y);
+                triggerShake(20);
             }
         }
     });
@@ -685,7 +863,11 @@ function updateBots() {
                 if (now - bot.lastAttack > 800) {
                     const sizeRatio = bot.size / closest.size;
                     const botSkinDmg = bot.skin === 'ant' ? 2.0 : (bot.skin === 'spider' ? 1.5 : 1.0);
-                    closest.hp -= 15 * botSkinDmg * Math.max(0.7, Math.min(1.5, sizeRatio));
+                    const damage = 15 * botSkinDmg * Math.max(0.7, Math.min(1.5, sizeRatio));
+                    closest.hp -= damage;
+                    spawnParticles(closest.x, closest.y, (closest === player ? 'red' : (closest.color || 'white')), 10);
+                    hitEffect(closest.x, closest.y);
+                    if (closest === player) triggerShake(15);
                     bot.lastAttack = now;
                 }
             }
@@ -736,7 +918,12 @@ function updateBots() {
         }
 
         if (bot.hp <= 0) {
+            if (minDist < bot.size + player.size) {
+                kills++;
+                totalEaten += 50;
+            }
             bots.splice(idx, 1);
+            updateLeaderboard();
             if (bots.length === 0) {
                 setTimeout(() => {
                     alert("Wygrałeś! Pokonałeś wszystkie robale. Otrzymujesz 100 punktów!");
@@ -753,7 +940,37 @@ function updateBots() {
     });
 }
 
-function update() {
+function spawnBush(x, y) {
+    decorations.push({
+        type: 'bush',
+        x: x + (Math.random() - 0.5) * 100,
+        y: y + (Math.random() - 0.5) * 100,
+        size: 30
+    });
+}
+
+function update(dt) {
+    const dts = dt * 60; // scale factor for 60fps logic
+    // Update screen shake
+    if (screenShake > 0) screenShake *= Math.pow(0.9, dts);
+    if (screenShake < 0.1) screenShake = 0;
+
+    // Update particles
+    for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.x += p.vx * dts;
+        p.y += p.vy * dts;
+        p.life -= p.decay * dts;
+        if (p.life <= 0) {
+            particles.splice(i, 1);
+        }
+    }
+
+    if (player.hp < player.lastHp) {
+        spawnBush(player.x, player.y);
+    }
+    player.lastHp = player.hp;
+
     if (player.hp <= 0) {
         alert("Zginąłeś! Powrót do menu głównego.");
         player.hp = player.maxHp;
@@ -768,9 +985,23 @@ function update() {
     }
 
     if (player.dashCooldown > 0) player.dashCooldown--;
+    if (player.lungeTime > 0) player.lungeTime--;
 
     if (player.isCharging) {
         player.chargeTime += 16.67; // approx 60fps
+    }
+
+    // Leczenie w krzakach
+    for (let i = decorations.length - 1; i >= 0; i--) {
+        const d = decorations[i];
+        if (d.type === 'bush') {
+            const dist = Math.sqrt((player.x - d.x)**2 + (player.y - d.y)**2);
+            if (dist < (player.size/2 + d.size)) {
+                player.hp = Math.min(player.maxHp, player.hp + 3);
+                decorations.splice(i, 1);
+                break; 
+            }
+        }
     }
 
     let dx = 0;
@@ -788,12 +1019,28 @@ function update() {
         dy = Math.sin(joystickAngle) * joystickDist;
     }
 
-    if (dx !== 0 || dy !== 0 || player.dashTime > 0) {
+    if (dx !== 0 || dy !== 0 || player.dashTime > 0 || player.lungeTime > 0) {
         let speed = player.baseSpeed * (1 + rebirths * 0.1) * getSpeedMultiplier();
         
         if (player.dashTime > 0) {
             speed *= 4; 
             player.dashTime--;
+            
+            // Check for dash collisions with bots
+            bots.forEach(bot => {
+                const dist = Math.sqrt((player.x - bot.x)**2 + (player.y - bot.y)**2);
+                if (dist < (player.size/2 + bot.size/2)) {
+                    beetleDashHit(bot);
+                    player.dashTime = 0; // Stop dashing on hit
+                }
+            });
+
+            if (dx === 0 && dy === 0) {
+                dx = Math.cos(player.angle);
+                dy = Math.sin(player.angle);
+            }
+        } else if (player.lungeTime > 0) {
+            speed *= 2.5; // Lunge during attack
             if (dx === 0 && dy === 0) {
                 dx = Math.cos(player.angle);
                 dy = Math.sin(player.angle);
@@ -829,14 +1076,16 @@ function update() {
             player.x = nextX;
         } else {
             // Odbijanie od ścian/budynków
-            player.x -= dx * speed * 0.4;
+            player.x -= dx * speed * 2.0; // Stronger bounce
+            if (player.hp < player.maxHp) spawnBush(player.x, player.y);
         }
 
         if (!checkCollision(player.x, nextY, player.size)) {
             player.y = nextY;
         } else {
             // Odbijanie od ścian/budynków
-            player.y -= dy * speed * 0.4;
+            player.y -= dy * speed * 2.0; // Stronger bounce
+            if (player.hp < player.maxHp) spawnBush(player.x, player.y);
         }
     }
 
@@ -877,96 +1126,217 @@ function update() {
 function drawBeetle(x, y, size, angle, color, hp, maxHp) {
     ctx.save();
     ctx.translate(x, y);
+    
+    // HP Bar
     const barWidth = size * 1.5;
-    ctx.fillStyle = 'red';
-    ctx.fillRect(-barWidth/2, -size * 0.8, barWidth, 5);
-    ctx.fillStyle = '#0f0';
-    ctx.fillRect(-barWidth/2, -size * 0.8, barWidth * (hp / maxHp), 5);
+    ctx.fillStyle = 'rgba(255,0,0,0.3)';
+    ctx.fillRect(-barWidth/2, -size * 0.9, barWidth, 6);
+    ctx.fillStyle = '#2ecc71';
+    ctx.fillRect(-barWidth/2, -size * 0.9, barWidth * (hp / maxHp), 6);
+    
     ctx.rotate(angle);
 
-    ctx.strokeStyle = '#111';
-    ctx.lineWidth = size * 0.1;
+    // Legs with better style
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = size * 0.08;
+    ctx.lineCap = 'round';
     for(let i = -1; i <= 1; i++) {
+        if (i === 0) continue;
+        const offset = Math.sin(Date.now() * 0.01) * 0.1;
+        // Left legs
         ctx.beginPath();
-        ctx.moveTo(0, i * size * 0.3);
-        ctx.lineTo(-size * 0.6, i * size * 0.5);
+        ctx.moveTo(0, i * size * 0.2);
+        ctx.lineTo(-size * 0.7, i * size * (0.4 + offset));
         ctx.stroke();
+        // Right legs
         ctx.beginPath();
-        ctx.moveTo(0, i * size * 0.3);
-        ctx.lineTo(size * 0.6, i * size * 0.5);
+        ctx.moveTo(0, i * size * 0.2);
+        ctx.lineTo(size * 0.7, i * size * (0.4 + offset));
         ctx.stroke();
     }
-    ctx.fillStyle = '#1a1a1a';
-    ctx.beginPath(); ctx.ellipse(0, 0, size * 0.5, size * 0.4, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = color;
-    ctx.beginPath(); ctx.arc(0, 0, size * 0.4, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = '#000'; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(-size * 0.4, 0); ctx.lineTo(size * 0.4, 0); ctx.stroke();
+
+    // Body segments
+    const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, size * 0.5);
+    grad.addColorStop(0, color);
+    grad.addColorStop(1, '#000');
+
+    // Main Shell
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, size * 0.5, size * 0.45, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Head
     ctx.fillStyle = '#111';
-    ctx.beginPath(); ctx.arc(size * 0.35, 0, size * 0.2, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath();
+    ctx.arc(size * 0.3, 0, size * 0.25, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Eyes
+    ctx.fillStyle = 'white';
+    ctx.beginPath();
+    ctx.arc(size * 0.45, -size * 0.1, size * 0.06, 0, Math.PI * 2);
+    ctx.arc(size * 0.45, size * 0.1, size * 0.06, 0, Math.PI * 2);
+    ctx.fill();
+    
     ctx.fillStyle = 'red';
-    ctx.beginPath(); ctx.arc(size * 0.45, -size * 0.1, size * 0.05, 0, Math.PI * 2);
-    ctx.arc(size * 0.45, size * 0.1, size * 0.05, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath();
+    ctx.arc(size * 0.48, -size * 0.1, size * 0.03, 0, Math.PI * 2);
+    ctx.arc(size * 0.48, size * 0.1, size * 0.03, 0, Math.PI * 2);
+    ctx.fill();
+
     ctx.restore();
 }
 
 function drawSpider(x, y, size, angle, color, hp, maxHp) {
     ctx.save();
     ctx.translate(x, y);
+    
+    // HP Bar
     const barWidth = size * 1.5;
-    ctx.fillStyle = 'red';
-    ctx.fillRect(-barWidth/2, -size * 0.8, barWidth, 5);
-    ctx.fillStyle = '#0f0';
-    ctx.fillRect(-barWidth/2, -size * 0.8, barWidth * (hp / maxHp), 5);
+    ctx.fillStyle = 'rgba(255,0,0,0.3)';
+    ctx.fillRect(-barWidth/2, -size * 0.9, barWidth, 6);
+    ctx.fillStyle = '#2ecc71';
+    ctx.fillRect(-barWidth/2, -size * 0.9, barWidth * (hp / maxHp), 6);
+
     ctx.rotate(angle);
 
-    ctx.strokeStyle = '#000';
-    ctx.lineWidth = size * 0.05;
+    // Spider Legs (8)
+    ctx.strokeStyle = '#111';
+    ctx.lineWidth = size * 0.06;
+    ctx.lineCap = 'round';
     for(let i=0; i<4; i++) {
-        const sideAngle = (i-1.5) * 0.5;
-        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(Math.PI/2 + sideAngle) * size * 0.8, Math.sin(Math.PI/2 + sideAngle) * size * 0.8); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(-Math.PI/2 - sideAngle) * size * 0.8, Math.sin(-Math.PI/2 - sideAngle) * size * 0.8); ctx.stroke();
+        const sideAngle = (i-1.5) * 0.6 + Math.sin(Date.now() * 0.01 + i) * 0.1;
+        // Left
+        ctx.beginPath(); ctx.moveTo(0, 0); 
+        ctx.quadraticCurveTo(Math.cos(Math.PI/2 + sideAngle) * size, Math.sin(Math.PI/2 + sideAngle) * size, Math.cos(Math.PI/2 + sideAngle) * size * 1.2, Math.sin(Math.PI/2 + sideAngle) * size * 1.2); 
+        ctx.stroke();
+        // Right
+        ctx.beginPath(); ctx.moveTo(0, 0); 
+        ctx.quadraticCurveTo(Math.cos(-Math.PI/2 - sideAngle) * size, Math.sin(-Math.PI/2 - sideAngle) * size, Math.cos(-Math.PI/2 - sideAngle) * size * 1.2, Math.sin(-Math.PI/2 - sideAngle) * size * 1.2); 
+        ctx.stroke();
     }
+
+    // Abdomen
+    const grad = ctx.createRadialGradient(-size * 0.3, 0, 0, -size * 0.3, 0, size * 0.4);
+    grad.addColorStop(0, color);
+    grad.addColorStop(1, '#000');
+    ctx.fillStyle = grad;
+    ctx.beginPath(); ctx.arc(-size * 0.3, 0, size * 0.4, 0, Math.PI * 2); ctx.fill();
+
+    // Cephalothorax (Head/Chest)
     ctx.fillStyle = '#111';
-    ctx.beginPath(); ctx.arc(-size * 0.2, 0, size * 0.3, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = color;
-    ctx.beginPath(); ctx.arc(size * 0.1, 0, size * 0.2, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = 'white';
-    for(let i=-1; i<=1; i+=2) {
-        ctx.beginPath(); ctx.arc(size * 0.2, i * size * 0.05, size * 0.03, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(size * 0.1, 0, size * 0.25, 0, Math.PI * 2); ctx.fill();
+
+    // Many Eyes
+    ctx.fillStyle = 'red';
+    for(let i=-2; i<=2; i++) {
+        if(i===0) continue;
+        ctx.beginPath(); ctx.arc(size * 0.25, i * size * 0.05, size * 0.04, 0, Math.PI * 2); ctx.fill();
     }
+
     ctx.restore();
 }
 
 function drawAnt(x, y, size, angle, color, hp, maxHp) {
     ctx.save();
     ctx.translate(x, y);
+    
+    // HP Bar
     const barWidth = size * 1.5;
-    ctx.fillStyle = 'red';
-    ctx.fillRect(-barWidth/2, -size * 0.8, barWidth, 5);
-    ctx.fillStyle = '#0f0';
-    ctx.fillRect(-barWidth/2, -size * 0.8, barWidth * (hp / maxHp), 5);
+    ctx.fillStyle = 'rgba(255,0,0,0.3)';
+    ctx.fillRect(-barWidth/2, -size * 0.9, barWidth, 6);
+    ctx.fillStyle = '#2ecc71';
+    ctx.fillRect(-barWidth/2, -size * 0.9, barWidth * (hp / maxHp), 6);
+
     ctx.rotate(angle);
 
-    // Ant Segments (3 parts)
-    ctx.fillStyle = color;
-    ctx.beginPath(); ctx.arc(-size * 0.4, 0, size * 0.25, 0, Math.PI * 2); ctx.fill(); // Abdomen
-    ctx.beginPath(); ctx.arc(-size * 0.05, 0, size * 0.15, 0, Math.PI * 2); ctx.fill(); // Thorax
-    ctx.beginPath(); ctx.arc(size * 0.2, 0, size * 0.18, 0, Math.PI * 2); ctx.fill(); // Head
-
-    // 6 Legs
+    // Ant Segments
+    ctx.lineCap = 'round';
     ctx.strokeStyle = '#000';
-    ctx.lineWidth = size * 0.04;
+    
+    // Legs
+    ctx.lineWidth = size * 0.05;
     for(let i=-1; i<=1; i++) {
-        const lx = -size * 0.05;
-        const ly = i * size * 0.15;
-        ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(lx - size * 0.2, ly + i * size * 0.4); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(lx + size * 0.2, ly + i * size * 0.4); ctx.stroke();
+        const legOffset = Math.sin(Date.now() * 0.01 + i) * 0.1;
+        ctx.beginPath(); ctx.moveTo(0, i * size * 0.1); ctx.lineTo(-size * 0.3, i * size * (0.5 + legOffset)); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, i * size * 0.1); ctx.lineTo(size * 0.3, i * size * (0.5 + legOffset)); ctx.stroke();
     }
 
+    const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, size * 0.4);
+    grad.addColorStop(0, color);
+    grad.addColorStop(1, '#000');
+    ctx.fillStyle = grad;
+
+    // Abdomen (Tail)
+    ctx.beginPath(); ctx.ellipse(-size * 0.4, 0, size * 0.3, size * 0.25, 0, 0, Math.PI * 2); ctx.fill();
+    // Thorax (Middle)
+    ctx.beginPath(); ctx.ellipse(0, 0, size * 0.2, size * 0.15, 0, 0, Math.PI * 2); ctx.fill();
+    // Head
+    ctx.beginPath(); ctx.arc(size * 0.3, 0, size * 0.2, 0, Math.PI * 2); ctx.fill();
+
     // Antennae
-    ctx.beginPath(); ctx.moveTo(size * 0.25, -size * 0.05); ctx.lineTo(size * 0.45, -size * 0.15); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(size * 0.25, size * 0.05); ctx.lineTo(size * 0.45, size * 0.15); ctx.stroke();
+    ctx.lineWidth = size * 0.03;
+    ctx.beginPath(); ctx.moveTo(size * 0.4, -size * 0.05); ctx.quadraticCurveTo(size * 0.6, -size * 0.2, size * 0.7, -size * 0.1); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(size * 0.4, size * 0.05); ctx.quadraticCurveTo(size * 0.6, size * 0.2, size * 0.7, size * 0.1); ctx.stroke();
+
+    ctx.restore();
+}
+
+function drawBee(x, y, size, angle, color, hp, maxHp) {
+    ctx.save();
+    ctx.translate(x, y);
+    
+    // HP Bar
+    const barWidth = size * 1.5;
+    ctx.fillStyle = 'rgba(255,0,0,0.3)';
+    ctx.fillRect(-barWidth/2, -size * 0.9, barWidth, 6);
+    ctx.fillStyle = '#2ecc71';
+    ctx.fillRect(-barWidth/2, -size * 0.9, barWidth * (hp / maxHp), 6);
+
+    ctx.rotate(angle);
+
+    // Bee Wings (Moving)
+    ctx.fillStyle = 'rgba(200, 230, 255, 0.6)';
+    const wingAngle = Math.sin(Date.now() * 0.05) * 0.4;
+    ctx.beginPath();
+    ctx.ellipse(0, -size * 0.2, size * 0.4, size * 0.2, -Math.PI/4 + wingAngle, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(0, size * 0.2, size * 0.4, size * 0.2, Math.PI/4 - wingAngle, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Body segments (Yellow/Black)
+    const bodyGrad = ctx.createLinearGradient(-size * 0.5, 0, size * 0.5, 0);
+    bodyGrad.addColorStop(0, '#000');
+    bodyGrad.addColorStop(0.2, '#f1c40f');
+    bodyGrad.addColorStop(0.4, '#000');
+    bodyGrad.addColorStop(0.6, '#f1c40f');
+    bodyGrad.addColorStop(0.8, '#000');
+    bodyGrad.addColorStop(1, '#f1c40f');
+
+    ctx.fillStyle = bodyGrad;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, size * 0.5, size * 0.4, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Eyes
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.arc(size * 0.3, -size * 0.15, size * 0.08, 0, Math.PI * 2);
+    ctx.arc(size * 0.3, size * 0.15, size * 0.08, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Stinger
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.moveTo(-size * 0.5, 0);
+    ctx.lineTo(-size * 0.7, 0);
+    ctx.lineTo(-size * 0.5, size * 0.05);
+    ctx.fill();
 
     ctx.restore();
 }
@@ -995,29 +1365,57 @@ function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     const baseZoom = 1.0;
     const zoom = Math.max(0.3, baseZoom / (1 + (player.size - 45) * 0.003));
-    ctx.fillStyle = '#1a1a1a';
+    ctx.fillStyle = '#1e1e1e'; // Brighter background
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    const camX = player.x;
-    const camY = player.y;
+    
+    let camX = player.x;
+    let camY = player.y;
+
+    // Apply Screen Shake
+    if (screenShake > 0) {
+        camX += (Math.random() - 0.5) * screenShake;
+        camY += (Math.random() - 0.5) * screenShake;
+    }
 
     ctx.save();
     ctx.translate(canvas.width / 2, canvas.height / 2);
     ctx.scale(zoom, zoom);
     ctx.translate(-camX, -camY);
 
-    ctx.strokeStyle = '#222';
-    ctx.lineWidth = 10;
-    for(let i = 0; i <= WORLD_SIZE; i += 400) {
+    // Draw Grid
+    ctx.strokeStyle = '#333'; // Brighter grid
+    ctx.lineWidth = 2;
+    for(let i = 0; i <= WORLD_SIZE; i += 200) { // Denser grid
         ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, WORLD_SIZE); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(WORLD_SIZE, i); ctx.stroke();
     }
     
-    buildings.forEach(b => {
-        ctx.fillStyle = '#333';
-        ctx.fillRect(b.x - 20, b.y - 20, b.w + 40, b.h + 40);
+    // World Border
+    ctx.strokeStyle = '#2ecc71';
+    ctx.lineWidth = 10;
+    ctx.strokeRect(0, 0, WORLD_SIZE, WORLD_SIZE);
+
+    // Draw Decorations (Bushes)
+    decorations.forEach(d => {
+        if (d.type === 'bush') {
+            ctx.fillStyle = '#1b4d3e';
+            ctx.beginPath(); ctx.arc(d.x, d.y, d.size, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#2ecc71';
+            ctx.beginPath(); ctx.arc(d.x - 5, d.y - 5, d.size * 0.6, 0, Math.PI * 2); ctx.fill();
+        }
     });
 
     entities.forEach(drawEntity);
+
+    // Draw Particles
+    particles.forEach(p => {
+        ctx.globalAlpha = p.life;
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+    });
+    ctx.globalAlpha = 1.0;
 
     buildings.forEach(b => {
         ctx.fillStyle = 'rgba(0,0,0,0.5)';
@@ -1043,7 +1441,8 @@ function draw() {
     });
 
     bots.forEach(bot => {
-        if (bot.skin === 'ant') drawAnt(bot.x, bot.y, bot.size, bot.angle, bot.color, bot.hp, bot.maxHp);
+        if (bot.skin === 'bee') drawBee(bot.x, bot.y, bot.size, bot.angle, bot.color, bot.hp, bot.maxHp);
+        else if (bot.skin === 'ant') drawAnt(bot.x, bot.y, bot.size, bot.angle, bot.color, bot.hp, bot.maxHp);
         else if (bot.skin === 'spider') drawSpider(bot.x, bot.y, bot.size, bot.angle, bot.color, bot.hp, bot.maxHp);
         else drawBeetle(bot.x, bot.y, bot.size, bot.angle, bot.color, bot.hp, bot.maxHp);
         
@@ -1058,7 +1457,8 @@ function draw() {
     });
 
     Object.values(remotePlayers).forEach(p => {
-        if (p.skin === 'ant') drawAnt(p.x, p.y, p.size, p.angle, p.color || '#3498db', p.hp, p.maxHp);
+        if (p.skin === 'bee') drawBee(p.x, p.y, p.size, p.angle, p.color || '#3498db', p.hp, p.maxHp);
+        else if (p.skin === 'ant') drawAnt(p.x, p.y, p.size, p.angle, p.color || '#3498db', p.hp, p.maxHp);
         else if (p.skin === 'spider') drawSpider(p.x, p.y, p.size, p.angle, p.color || '#3498db', p.hp, p.maxHp);
         else drawBeetle(p.x, p.y, p.size, p.angle, p.color || '#3498db', p.hp, p.maxHp);
 
@@ -1070,7 +1470,20 @@ function draw() {
         ctx.restore();
     });
 
-    if (currentSkin === 'ant') drawAnt(player.x, player.y, player.size, player.angle, '#2c3e50', player.hp, player.maxHp);
+    // Draw Attack Slash Effect
+    if (player.lungeTime > 0) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(player.x, player.y, player.size * 1.8, player.angle - 0.8, player.angle + 0.8);
+        ctx.strokeStyle = `rgba(255, 50, 50, ${player.lungeTime / 15})`;
+        ctx.lineWidth = 15;
+        ctx.lineCap = 'round';
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    if (currentSkin === 'bee') drawBee(player.x, player.y, player.size, player.angle, '#2c3e50', player.hp, player.maxHp);
+    else if (currentSkin === 'ant') drawAnt(player.x, player.y, player.size, player.angle, '#2c3e50', player.hp, player.maxHp);
     else if (currentSkin === 'spider') drawSpider(player.x, player.y, player.size, player.angle, '#2c3e50', player.hp, player.maxHp);
     else drawBeetle(player.x, player.y, player.size, player.angle, '#2c3e50', player.hp, player.maxHp);
     
@@ -1098,9 +1511,16 @@ function draw() {
     }
 }
 
-function gameLoop() {
-    if (gameState !== 'PLAYING') return;
-    update();
+function gameLoop(timestamp) {
+    if (gameState !== 'PLAYING') {
+        lastTime = 0;
+        return;
+    }
+    if (!lastTime) lastTime = timestamp;
+    const dt = (timestamp - lastTime) / 1000;
+    lastTime = timestamp;
+
+    update(dt);
     draw();
     requestAnimationFrame(gameLoop);
 }

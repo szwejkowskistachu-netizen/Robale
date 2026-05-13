@@ -5,10 +5,13 @@ body {
     justify-content: center;
     align-items: center;
     height: 100vh;
-    background: radial-gradient(circle, #2c3e50 0%, #000000 100%);
+    height: 100dvh; /* Dynamic viewport height for mobile */
+    background: #000;
     color: white;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     overflow: hidden;
+    position: fixed; /* Prevent scrolling/bouncing on mobile */
+    width: 100%;
 }
 
 #menu-container, #skin-menu, #rebirth-menu, #matchmaking-menu {
@@ -186,6 +189,11 @@ button:active {
 #gameCanvas {
     background-color: #111;
     display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
 }
 
 .skin-item {
@@ -232,3 +240,39 @@ button:active {
 
 .blob1 { top: -100px; left: -100px; }
 .blob2 { bottom: -100px; right: -100px; }
+
+#leaderboard {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    background: rgba(0, 0, 0, 0.5);
+    color: white;
+    padding: 10px;
+    border-radius: 5px;
+    font-family: Arial, sans-serif;
+    min-width: 150px;
+    pointer-events: none;
+    z-index: 100;
+}
+
+.hit{
+    position:absolute;
+    width:20px;
+    height:20px;
+    background:red;
+    border-radius:50%;
+    animation: hit .2s;
+    pointer-events: none;
+    z-index: 200;
+}
+
+@keyframes hit{
+    from{
+        transform:scale(2);
+        opacity:1;
+    }
+    to{
+        transform:scale(0);
+        opacity:0;
+    }
+}
