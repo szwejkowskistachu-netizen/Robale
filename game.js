@@ -73,19 +73,19 @@ let player = {
     baseSpeed: 4,
     angle: 0,
     targetAngle: 0,
-    hp: 1000,
-    maxHp: 1000,
+    hp: 100,
+    maxHp: 100,
     chargeTime: 0,
     isCharging: false,
     lastAttack: 0,
     dashTime: 0,
     dashCooldown: 0,
     lungeTime: 0,
-    lastHp: 1000,
-    baseDamage: 50,
+    lastHp: 100,
+    baseDamage: 25,
     poison: {
         active: false,
-        damage: 5,
+        damage: 2,
         duration: 3000
     }
 };
@@ -753,29 +753,41 @@ function checkCollision(nx, ny, size) {
 
 function performShiftAttack() {
     const now = Date.now();
-    if (now - player.lastAttack < 300) return; // Faster attack
+    if (now - player.lastAttack < 500) return;
     player.lastAttack = now;
-    player.lungeTime = 15; 
+    player.lungeTime = 15; // Trigger lunge
 
-    const attackRange = player.size * 3.5; // Huge range
+    const attackRange = player.size * 2.5; 
     const skinDmg = getDamageMultiplier();
-    const currentBaseDmg = getDamage(player) * 2; 
+    const currentBaseDmg = getDamage(player); 
     
     bots.forEach(bot => {
         const dist = Math.sqrt((player.x - bot.x)**2 + (player.y - bot.y)**2);
         if (dist < attackRange) {
-            // No angle check - hit everything around!
-            const sizeRatio = player.size / bot.size;
-            const damage = currentBaseDmg * skinDmg * Math.max(1.5, Math.min(3.0, sizeRatio));
-            bot.hp -= damage;
-            
-            if (currentSkin === 'spider') {
-                applyPoison(bot);
-            }
+            const angleToBot = Math.atan2(bot.y - player.y, bot.x - player.x);
+            let angleDiff = Math.abs(player.angle - angleToBot);
+            while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+            angleDiff = Math.abs(angleDiff);
 
-            spawnParticles(bot.x, bot.y, bot.color || 'red', 15);
-            hitEffect(bot.x, bot.y);
-            triggerShake(12);
+            if (angleDiff < 1.5) { 
+                const sizeRatio = player.size / bot.size;
+                let damage = currentBaseDmg * skinDmg * Math.max(1.0, Math.min(2.0, sizeRatio));
+                
+                // One-shot protection for bots (normal attack)
+                if (damage >= bot.hp && bot.hp === bot.maxHp) {
+                    damage = bot.hp - 1;
+                }
+                
+                bot.hp -= damage;
+                
+                if (currentSkin === 'spider') {
+                    applyPoison(bot);
+                }
+
+                spawnParticles(bot.x, bot.y, bot.color || 'red', 15);
+                hitEffect(bot.x, bot.y);
+                triggerShake(10);
+            }
         }
     });
 
@@ -876,7 +888,13 @@ function updateBots() {
                 if (now - bot.lastAttack > 1200) { // Slower bot attack rate
                     const sizeRatio = bot.size / closest.size;
                     const botSkinDmg = bot.skin === 'ant' ? 1.5 : (bot.skin === 'spider' ? 1.2 : 0.8); // Reduced bot dmg multipliers
-                    const damage = 10 * botSkinDmg * Math.max(0.5, Math.min(1.2, sizeRatio)); // Reduced base bot damage
+                    let damage = 10 * botSkinDmg * Math.max(0.5, Math.min(1.2, sizeRatio)); // Reduced base bot damage
+                    
+                    // One-shot protection (bots attacking player or other bots)
+                    if (damage >= closest.hp && closest.hp === closest.maxHp) {
+                        damage = closest.hp - 1;
+                    }
+                    
                     closest.hp -= damage;
                     spawnParticles(closest.x, closest.y, (closest === player ? 'red' : (closest.color || 'white')), 10);
                     hitEffect(closest.x, closest.y);
