@@ -24,7 +24,7 @@ const mobileControls = document.getElementById('mobile-controls');
 const joystickZone = document.getElementById('joystick-zone');
 const joystickBase = document.getElementById('joystick-base');
 const joystickHandle = document.getElementById('joystick-handle');
-const playBtn = document.getElementById('play-btn');
+const playBtn = document.getElementById('main-play-btn');
 const skinBtn = document.getElementById('skin-btn');
 const backBtn = document.getElementById('back-btn');
 const rebirthBtn = document.getElementById('rebirth-btn');
@@ -282,22 +282,15 @@ function getSpeedMultiplier() {
 }
 
 // Event Listeners
-if (playBtn) {
-    playBtn.addEventListener('click', () => {
-        if (menuContainer) menuContainer.classList.add('hidden');
-        if (difficultyMenu) difficultyMenu.classList.remove('hidden');
-    });
-}
-
-if (diffBtns) {
-    diffBtns.forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            difficulty = e.target.getAttribute('data-diff');
-            if (difficultyMenu) difficultyMenu.classList.add('hidden');
-            startLobby();
+    if (diffBtns) {
+        diffBtns.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                difficulty = e.currentTarget.getAttribute('data-diff');
+                if (difficultyMenu) difficultyMenu.classList.add('hidden');
+                startLobby();
+            });
         });
-    });
-}
+    }
 
 if (diffBackBtn) {
     diffBackBtn.addEventListener('click', () => {
