@@ -167,15 +167,21 @@ function beetleDashHit(enemy) {
 }
 
 function hitEffect(x, y) {
-    const screenPos = worldToScreen(x, y);
-    const effect = document.createElement("div");
-    effect.className = "hit";
-    effect.style.left = screenPos.x + "px";
-    effect.style.top = screenPos.y + "px";
-    document.body.appendChild(effect);
-    setTimeout(() => {
-        effect.remove();
-    }, 200);
+    try {
+        const screenPos = worldToScreen(x, y);
+        if (!screenPos || isNaN(screenPos.x) || isNaN(screenPos.y)) return;
+
+        const effect = document.createElement("div");
+        effect.className = "hit";
+        effect.style.left = screenPos.x + "px";
+        effect.style.top = screenPos.y + "px";
+        document.body.appendChild(effect);
+        setTimeout(() => {
+            if (effect && effect.parentNode) effect.remove();
+        }, 200);
+    } catch (e) {
+        console.warn("Hit effect failed:", e);
+    }
 }
 
 function updateLeaderboard() {
@@ -961,13 +967,14 @@ function update(dt) {
     if (screenShake > 0) screenShake *= Math.pow(0.9, dts);
     if (screenShake < 0.1) screenShake = 0;
 
-    // Update particles
+    // Update particles (Limit to 500 to prevent lag)
+    if (particles.length > 500) particles.splice(0, particles.length - 500);
     for (let i = particles.length - 1; i >= 0; i--) {
         const p = particles[i];
         p.x += p.vx * dts;
         p.y += p.vy * dts;
         p.life -= p.decay * dts;
-        if (p.life <= 0) {
+        if (p.life <= 0 || isNaN(p.x) || isNaN(p.y)) {
             particles.splice(i, 1);
         }
     }
@@ -1093,6 +1100,12 @@ function update(dt) {
             // Odbijanie od ścian/budynków
             player.y -= dy * speed * 2.0; // Stronger bounce
             if (player.hp < player.maxHp) spawnBush(player.x, player.y);
+        }
+        
+        // Safety check for NaN positions
+        if (isNaN(player.x) || isNaN(player.y)) {
+            player.x = 500;
+            player.y = 500;
         }
     }
 
