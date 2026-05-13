@@ -757,18 +757,21 @@ function performShiftAttack() {
     player.lastAttack = now;
     player.lungeTime = 15; // Trigger lunge
 
-    const attackRange = player.size * 1.8;
+    const attackRange = player.size * 2.5; // Increased range
     const skinDmg = getDamageMultiplier();
-    const currentBaseDmg = getDamage(player);
+    const currentBaseDmg = getDamage(player) * 1.5; // Increased base damage
     
     bots.forEach(bot => {
         const dist = Math.sqrt((player.x - bot.x)**2 + (player.y - bot.y)**2);
         if (dist < attackRange) {
             const angleToBot = Math.atan2(bot.y - player.y, bot.x - player.x);
-            const angleDiff = Math.abs(player.angle - angleToBot);
-            if (angleDiff < 1 || angleDiff > Math.PI * 2 - 1) {
+            let angleDiff = Math.abs(player.angle - angleToBot);
+            while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+            angleDiff = Math.abs(angleDiff);
+
+            if (angleDiff < 1.5) { // More generous angle
                 const sizeRatio = player.size / bot.size;
-                const damage = currentBaseDmg * skinDmg * Math.max(0.7, Math.min(1.5, sizeRatio));
+                const damage = currentBaseDmg * skinDmg * Math.max(1.0, Math.min(2.0, sizeRatio));
                 bot.hp -= damage;
                 
                 if (currentSkin === 'spider') {
@@ -791,20 +794,23 @@ function performShiftAttack() {
 }
 
 function performEnterAttack() {
-    const baseDamageVal = Math.min(100, (player.chargeTime / 5000) * 100);
-    const hpBonus = (player.maxHp - player.hp) * 0.05;
+    const baseDamageVal = Math.min(150, (player.chargeTime / 3000) * 150); // Faster charge, more dmg
+    const hpBonus = (player.maxHp - player.hp) * 0.1; // Increased HP bonus
     const finalBaseDmg = baseDamageVal + hpBonus;
-    const attackRange = player.size * 2;
+    const attackRange = player.size * 3; // Increased range
     const skinDmg = getDamageMultiplier();
     
     bots.forEach(bot => {
         const dist = Math.sqrt((player.x - bot.x)**2 + (player.y - bot.y)**2);
         if (dist < attackRange) {
             const angleToBot = Math.atan2(bot.y - player.y, bot.x - player.x);
-            const angleDiff = Math.abs(player.angle - angleToBot);
-            if (angleDiff < 1.5 || angleDiff > Math.PI * 2 - 1.5) {
+            let angleDiff = Math.abs(player.angle - angleToBot);
+            while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+            angleDiff = Math.abs(angleDiff);
+
+            if (angleDiff < 1.8) { // Generous angle
                 const sizeRatio = player.size / bot.size;
-                const damage = finalBaseDmg * skinDmg * Math.max(0.7, Math.min(1.5, sizeRatio));
+                const damage = finalBaseDmg * skinDmg * Math.max(1.0, Math.min(2.5, sizeRatio));
                 bot.hp -= damage;
                 
                 if (currentSkin === 'spider') {
@@ -863,7 +869,7 @@ function updateBots() {
             while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
             bot.angle += angleDiff * 0.08;
 
-            if (minDist > bot.size + closest.size) {
+            if (minDist > (bot.size + closest.size) * 0.6) { // Bots must be closer to hit
                 let speed = bot.speed;
                 if (bot.dashTime > 0) { speed *= 3; bot.dashTime--; }
                 const nx = bot.x + Math.cos(bot.angle) * speed;
@@ -872,10 +878,10 @@ function updateBots() {
                 if (!checkCollision(bot.x, ny, bot.size)) bot.y = ny;
             } else {
                 const now = Date.now();
-                if (now - bot.lastAttack > 800) {
+                if (now - bot.lastAttack > 1200) { // Slower bot attack rate
                     const sizeRatio = bot.size / closest.size;
-                    const botSkinDmg = bot.skin === 'ant' ? 2.0 : (bot.skin === 'spider' ? 1.5 : 1.0);
-                    const damage = 15 * botSkinDmg * Math.max(0.7, Math.min(1.5, sizeRatio));
+                    const botSkinDmg = bot.skin === 'ant' ? 1.5 : (bot.skin === 'spider' ? 1.2 : 0.8); // Reduced bot dmg multipliers
+                    const damage = 10 * botSkinDmg * Math.max(0.5, Math.min(1.2, sizeRatio)); // Reduced base bot damage
                     closest.hp -= damage;
                     spawnParticles(closest.x, closest.y, (closest === player ? 'red' : (closest.color || 'white')), 10);
                     hitEffect(closest.x, closest.y);
