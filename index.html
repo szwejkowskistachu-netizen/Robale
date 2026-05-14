@@ -19,10 +19,10 @@
 
     <div id="difficulty-menu" class="hidden">
         <h2>Wybierz Poziom Trudności</h2>
-        <button class="diff-btn" data-diff="easy">Łatwy (Głupie boty, mało DMG)</button>
-        <button class="diff-btn" data-diff="medium">Średni (Zbalansowany)</button>
-        <button class="diff-btn" data-diff="hard">Trudny (Mega Trudny!)</button>
-        <button id="diff-back-btn">Powrót</button>
+        <button class="diff-btn" data-diff="easy" onclick="selectDifficulty('easy')">Łatwy (Głupie boty, mało DMG)</button>
+        <button class="diff-btn" data-diff="medium" onclick="selectDifficulty('medium')">Średni (Zbalansowany)</button>
+        <button class="diff-btn" data-diff="hard" onclick="selectDifficulty('hard')">Trudny (Mega Trudny!)</button>
+        <button id="diff-back-btn" onclick="document.getElementById('difficulty-menu').classList.add('hidden'); document.getElementById('menu-container').classList.remove('hidden');">Powrót</button>
     </div>
 
     <div id="matchmaking-menu" class="hidden">
@@ -83,6 +83,7 @@
             <button id="mobile-dash-btn" class="mobile-btn">DASH</button>
             <button id="mobile-attack-lpm-btn" class="mobile-btn">ATAK 1</button>
             <button id="mobile-attack-ppm-btn" class="mobile-btn">ATAK 2</button>
+            <button id="mobile-super-btn" class="mobile-btn hidden">SUPER</button>
         </div>
     </div>
 

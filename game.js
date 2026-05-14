@@ -91,8 +91,17 @@ let player = {
         active: false,
         damage: 2,
         duration: 3000
-    }
+    },
+    superCooldown: 0,
+    isBallForm: false,
+    ballFormTime: 0
 };
+
+// Clones for Ant Super
+const clones = [];
+// Drops from enemies
+const drops = [];
+const lootTable = ["heal", "speed", "damage"];
 
 // World data
 const buildings = [];
@@ -281,16 +290,20 @@ function getSpeedMultiplier() {
     return 1.0;
 }
 
+function selectDifficulty(diff) {
+    difficulty = diff;
+    if (difficultyMenu) difficultyMenu.classList.add('hidden');
+    startLobby();
+}
+
 // Event Listeners
-    if (diffBtns) {
-        diffBtns.forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                difficulty = e.currentTarget.getAttribute('data-diff');
-                if (difficultyMenu) difficultyMenu.classList.add('hidden');
-                startLobby();
-            });
+if (diffBtns) {
+    diffBtns.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            selectDifficulty(e.currentTarget.getAttribute('data-diff'));
         });
-    }
+    });
+}
 
 if (diffBackBtn) {
     diffBackBtn.addEventListener('click', () => {
@@ -375,6 +388,9 @@ function startGame() {
     if (leaderboardUI) leaderboardUI.classList.remove('hidden');
     player.size = 45;
     player.hp = player.maxHp;
+    player.superCooldown = 0;
+    player.isBallForm = false;
+    clones.length = 0;
     kills = 0;
     updateLeaderboard();
     
@@ -675,6 +691,7 @@ window.addEventListener('keydown', e => {
     keys[e.key.toLowerCase()] = true;
     keys[e.code.toLowerCase()] = true; // Use code for robustness
     if (e.code === 'Space') performDash();
+    if (e.key.toLowerCase() === 'r') performSuperAttack();
 });
 window.addEventListener('keyup', e => {
     keys[e.key.toLowerCase()] = false;
@@ -704,6 +721,14 @@ window.addEventListener('contextmenu', e => {
 const mobileDashBtn = document.getElementById('mobile-dash-btn');
 const mobileAttackLpmBtn = document.getElementById('mobile-attack-lpm-btn');
 const mobileAttackPpmBtn = document.getElementById('mobile-attack-ppm-btn');
+const mobileSuperBtn = document.getElementById('mobile-super-btn');
+
+if (mobileSuperBtn) {
+    mobileSuperBtn.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        performSuperAttack();
+    });
+}
 
 if (mobileDashBtn) {
     mobileDashBtn.addEventListener('touchstart', (e) => {
@@ -874,10 +899,103 @@ function performEnterAttack() {
     });
 }
 
+function performSuperAttack() {
+    if (kills < 1 || player.superCooldown > 0) return;
+    
+    player.superCooldown = 600; // 10 seconds at 60fps
+    
+    if (currentSkin === 'spider') {
+        // Web: Immobilize nearest bot
+        let nearest = null;
+        let minDist = 400;
+        bots.forEach(bot => {
+            const dist = Math.sqrt((player.x - bot.x)**2 + (player.y - bot.y)**2);
+            if (dist < minDist) {
+                minDist = dist;
+                nearest = bot;
+            }
+        });
+        if (nearest) {
+            nearest.immobilized = 180; // 3 seconds
+            spawnParticles(nearest.x, nearest.y, 'white', 30, 3);
+        }
+    } else if (currentSkin === 'ant') {
+        // Clone: Create 1 clone
+        clones.push({
+            x: player.x,
+            y: player.y,
+            size: player.size * 0.8,
+            angle: player.angle,
+            hp: 100,
+            life: 600, // 10 seconds
+            speed: player.baseSpeed * 1.5,
+            color: '#e67e22',
+            lastAttack: 0
+        });
+    } else if (currentSkin === 'bee') {
+        // Stinger: Poison nearest bot for 5 dmg/sec for 10s
+        let nearest = null;
+        let minDist = 300;
+        bots.forEach(bot => {
+            const dist = Math.sqrt((player.x - bot.x)**2 + (player.y - bot.y)**2);
+            if (dist < minDist) {
+                minDist = dist;
+                nearest = bot;
+            }
+        });
+        if (nearest) {
+            nearest.stingerTicks = 600; // 10 seconds
+        }
+    } else if (currentSkin === 'beetle') {
+        // Ball: Rolling form
+        player.isBallForm = true;
+        player.ballFormTime = 300; // 5 seconds
+    }
+}
+
+function spawnRandomDrop(x, y) {
+    const randomType = lootTable[Math.floor(Math.random() * lootTable.length)];
+    drops.push({
+        x, y,
+        size: 20,
+        type: randomType,
+        color: randomType === "heal" ? "#2ecc71" : (randomType === "speed" ? "#3498db" : "#e74c3c")
+    });
+
+    if (Math.random() < 0.05) {
+        spawnLegendaryDrop(x, y);
+    }
+}
+
+function spawnLegendaryDrop(x, y) {
+    drops.push({
+        x, y,
+        size: 30,
+        type: "legendary",
+        color: "gold"
+    });
+}
+
 function updateBots() {
     for (let idx = bots.length - 1; idx >= 0; idx--) {
         const bot = bots[idx];
         if (bot.dashCooldown > 0) bot.dashCooldown--;
+        if (bot.immobilized > 0) {
+            bot.immobilized--;
+            // Draw web effect
+            spawnParticles(bot.x, bot.y, 'white', 1, 0.5);
+            continue; // Skip movement and attack
+        }
+
+        if (bot.stingerTicks > 0) {
+            bot.stingerTicks--;
+            if (bot.stingerTicks % 60 === 0) { // Every 1 second
+                bot.hp -= 5;
+                spawnParticles(bot.x, bot.y, '#f1c40f', 10, 2);
+            }
+        }
+
+        if (bot.hitByBallCooldown > 0) bot.hitByBallCooldown--;
 
         // Smarter Target Selection
         let targets = [...bots.filter((_, i) => i !== idx), player];
@@ -989,6 +1107,7 @@ function updateBots() {
         if (bot.hp <= 0) {
             kills++;
             totalEaten += 50;
+            spawnRandomDrop(bot.x, bot.y);
             bots.splice(idx, 1);
             updateLeaderboard();
             if (bots.length === 0) {
@@ -1013,6 +1132,43 @@ function spawnBush(x, y) {
         x: x + (Math.random() - 0.5) * 100,
         y: y + (Math.random() - 0.5) * 100,
         size: 30
+    });
+}
+
+function collectDrops() {
+    for (let i = drops.length - 1; i >= 0; i--) {
+        const drop = drops[i];
+        const dist = Math.sqrt((player.x - drop.x)**2 + (player.y - drop.y)**2);
+        if (dist < player.size/2 + drop.size) {
+            if (drop.type === "heal") {
+                player.hp = Math.min(player.maxHp, player.hp + 20);
+            } else if (drop.type === "speed") {
+                player.baseSpeed += 0.5; // Persistent speed boost
+            } else if (drop.type === "damage") {
+                player.baseDamage += 5; // Persistent damage boost
+            } else if (drop.type === "legendary") {
+                player.hp = player.maxHp;
+                player.baseSpeed += 1;
+                player.baseDamage += 10;
+                player.size += 10;
+            }
+            drops.splice(i, 1);
+            spawnParticles(player.x, player.y, "gold", 15);
+        }
+    }
+}
+
+function drawDrops() {
+    drops.forEach(drop => {
+        ctx.save();
+        ctx.translate(drop.x, drop.y);
+        ctx.fillStyle = drop.color;
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = "gold";
+        ctx.beginPath();
+        ctx.arc(0, 0, drop.size/2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
     });
 }
 
@@ -1045,11 +1201,79 @@ function update(dt) {
         player.size = 45;
         player.x = 500;
         player.y = 500;
+        player.superCooldown = 0;
+        player.isBallForm = false;
+        clones.length = 0;
         gameState = 'MENU';
         canvas.classList.add('hidden');
         mobileControls.classList.add('hidden');
         menuContainer.classList.remove('hidden');
         return;
+    }
+
+    if (player.superCooldown > 0) player.superCooldown--;
+    if (player.ballFormTime > 0) {
+        player.ballFormTime--;
+        if (player.ballFormTime <= 0) player.isBallForm = false;
+        
+        // Ball form damage logic
+        bots.forEach(bot => {
+            const dist = Math.sqrt((player.x - bot.x)**2 + (player.y - bot.y)**2);
+            if (dist < (player.size/2 + bot.size/2)) {
+                if (!bot.hitByBallCooldown || bot.hitByBallCooldown <= 0) {
+                    bot.hp -= 25;
+                    bot.hitByBallCooldown = 60; // 1 second cooldown
+                    spawnParticles(bot.x, bot.y, 'orange', 20, 5);
+                    triggerShake(10);
+                }
+            }
+        });
+    }
+
+    // Update Clones
+    for (let i = clones.length - 1; i >= 0; i--) {
+        const clone = clones[i];
+        clone.life--;
+        if (clone.life <= 0) {
+            clones.splice(i, 1);
+            continue;
+        }
+
+        // Clone AI: Chase nearest bot
+        let nearest = null;
+        let minDist = Infinity;
+        bots.forEach(bot => {
+            const dist = Math.sqrt((clone.x - bot.x)**2 + (clone.y - bot.y)**2);
+            if (dist < minDist) {
+                minDist = dist;
+                nearest = bot;
+            }
+        });
+
+        if (nearest) {
+            const targetAngle = Math.atan2(nearest.y - clone.y, nearest.x - clone.x);
+            clone.angle += (targetAngle - clone.angle) * 0.1;
+            clone.x += Math.cos(clone.angle) * clone.speed;
+            clone.y += Math.sin(clone.angle) * clone.speed;
+
+            if (minDist < clone.size) {
+                const now = Date.now();
+                if (now - clone.lastAttack > 500) {
+                    nearest.hp -= 10;
+                    clone.lastAttack = now;
+                    spawnParticles(nearest.x, nearest.y, nearest.color, 5);
+                }
+            }
+        }
+    }
+
+    // UI visibility
+    if (mobileSuperBtn) {
+        if (kills >= 1 && player.superCooldown <= 0) {
+            mobileSuperBtn.classList.remove('hidden');
+        } else {
+            mobileSuperBtn.classList.add('hidden');
+        }
     }
 
     if (player.dashCooldown > 0) player.dashCooldown--;
@@ -1184,6 +1408,7 @@ function update(dt) {
         }
     }
 
+    collectDrops();
     updateBots();
 
     // Emit update to server
@@ -1481,6 +1706,12 @@ function draw() {
     });
 
     entities.forEach(drawEntity);
+    drawDrops();
+
+    // Draw Clones
+    clones.forEach(clone => {
+        drawAnt(clone.x, clone.y, clone.size, clone.angle, clone.color, 100, 100);
+    });
 
     // Draw Particles
     particles.forEach(p => {
@@ -1521,6 +1752,17 @@ function draw() {
         else if (bot.skin === 'spider') drawSpider(bot.x, bot.y, bot.size, bot.angle, bot.color, bot.hp, bot.maxHp);
         else drawBeetle(bot.x, bot.y, bot.size, bot.angle, bot.color, bot.hp, bot.maxHp);
         
+        if (bot.immobilized > 0) {
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            for(let i=0; i<8; i++) {
+                ctx.moveTo(bot.x, bot.y);
+                ctx.lineTo(bot.x + Math.cos(i * Math.PI/4) * bot.size, bot.y + Math.sin(i * Math.PI/4) * bot.size);
+            }
+            ctx.stroke();
+        }
+        
         if (bot.isPlayer) {
             ctx.save();
             ctx.fillStyle = 'white';
@@ -1560,7 +1802,26 @@ function draw() {
     if (currentSkin === 'bee') drawBee(player.x, player.y, player.size, player.angle, '#2c3e50', player.hp, player.maxHp);
     else if (currentSkin === 'ant') drawAnt(player.x, player.y, player.size, player.angle, '#2c3e50', player.hp, player.maxHp);
     else if (currentSkin === 'spider') drawSpider(player.x, player.y, player.size, player.angle, '#2c3e50', player.hp, player.maxHp);
-    else drawBeetle(player.x, player.y, player.size, player.angle, '#2c3e50', player.hp, player.maxHp);
+    else {
+        if (player.isBallForm) {
+            ctx.save();
+            ctx.translate(player.x, player.y);
+            ctx.rotate(Date.now() * 0.01);
+            const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, player.size * 0.5);
+            grad.addColorStop(0, '#34495e');
+            grad.addColorStop(1, '#000');
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.arc(0, 0, player.size * 0.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = 'cyan';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+            ctx.restore();
+        } else {
+            drawBeetle(player.x, player.y, player.size, player.angle, '#2c3e50', player.hp, player.maxHp);
+        }
+    }
     
     if (player.isCharging) {
         const chargePerc = Math.min(1, player.chargeTime / 5000);
@@ -1575,6 +1836,16 @@ function draw() {
     ctx.fillText(`Rozmiar: ${Math.floor(player.size)}`, 20, 30);
     ctx.fillText(`Punkty: ${totalEaten}`, 20, 60);
     ctx.fillText(`Rebirthy: ${rebirths}/2`, 20, 90);
+    
+    if (kills >= 1) {
+        ctx.fillStyle = player.superCooldown > 0 ? 'rgba(255,255,255,0.5)' : '#9b59b2';
+        ctx.fillText(`SUPER (R): ${player.superCooldown > 0 ? Math.ceil(player.superCooldown/60)+'s' : 'GOTOWY'}`, 20, 120);
+    } else {
+        ctx.fillStyle = 'rgba(255,255,255,0.3)';
+        ctx.fillText(`SUPER: (Wymaga 1 kila)`, 20, 120);
+    }
+    
+    ctx.fillStyle = 'white';
     ctx.fillText(`Atak: LPM (szybki) | PPM (ładuj)`, 20, canvas.height - 20);
     
     if (player.dashCooldown > 0) {
