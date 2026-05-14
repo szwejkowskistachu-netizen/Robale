@@ -2141,6 +2141,45 @@ function gameLoop(timestamp) {
     requestAnimationFrame(gameLoop);
 }
 
+// Draggable line logic
+const dragLine = document.getElementById('draggable-line');
+let isDraggingLine = false;
+
+if (dragLine) {
+    dragLine.addEventListener('mousedown', () => {
+        isDraggingLine = true;
+        dragLine.style.background = 'linear-gradient(90deg, transparent, #00ff00, transparent)';
+    });
+
+    window.addEventListener('mousemove', (e) => {
+        if (isDraggingLine) {
+            dragLine.style.top = e.clientY + 'px';
+        }
+    });
+
+    window.addEventListener('mouseup', () => {
+        isDraggingLine = false;
+        if (dragLine) dragLine.style.background = 'linear-gradient(90deg, transparent, #ff0000, transparent)';
+    });
+
+    // Touch support for mobile
+    dragLine.addEventListener('touchstart', (e) => {
+        isDraggingLine = true;
+        dragLine.style.background = 'linear-gradient(90deg, transparent, #00ff00, transparent)';
+    });
+
+    window.addEventListener('touchmove', (e) => {
+        if (isDraggingLine && e.touches[0]) {
+            dragLine.style.top = e.touches[0].clientY + 'px';
+        }
+    }, { passive: false });
+
+    window.addEventListener('touchend', () => {
+        isDraggingLine = false;
+        if (dragLine) dragLine.style.background = 'linear-gradient(90deg, transparent, #ff0000, transparent)';
+    });
+}
+
 loadGame();
 updateRebirthUI();
 updateSkinUI();

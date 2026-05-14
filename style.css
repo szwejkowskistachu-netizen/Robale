@@ -350,6 +350,18 @@ button:active {
     z-index: 200;
 }
 
+#draggable-line {
+    position: fixed;
+    top: 50%;
+    left: 0;
+    width: 100%;
+    height: 5px;
+    background: linear-gradient(90deg, transparent, #ff0000, transparent);
+    cursor: ns-resize;
+    z-index: 10000;
+    box-shadow: 0 0 10px rgba(255, 0, 0, 0.5);
+}
+
 @keyframes hit{
     from{
         transform:scale(2);
