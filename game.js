@@ -94,14 +94,43 @@ let player = {
     },
     superCooldown: 0,
     isBallForm: false,
-    ballFormTime: 0
+    ballFormTime: 0,
+    shield: false,
+    invisible: false,
+    extraDash: false,
+    poisonAura: false,
+    gold: 0
 };
 
 // Clones for Ant Super
 const clones = [];
 // Drops from enemies
 const drops = [];
-const lootTable = ["heal", "speed", "damage"];
+const lootTable = [
+    "heal",
+    "speed",
+    "damage",
+    "shield",
+    "rage",
+    "freeze",
+    "invisible",
+    "multiDash",
+    "poisonAura",
+    "gold"
+];
+const dropColors = {
+    heal: "lime",
+    speed: "cyan",
+    damage: "red",
+    shield: "blue",
+    rage: "orange",
+    freeze: "white",
+    invisible: "purple",
+    multiDash: "yellow",
+    poisonAura: "green",
+    gold: "gold",
+    legendary: "gold"
+};
 
 // World data
 const buildings = [];
@@ -363,6 +392,10 @@ if (socket) {
 
     socket.on('playerAttacked', (data) => {
         if (data.id === socket.id) {
+            if (player.shield) {
+                player.shield = false;
+                return;
+            }
             player.hp -= data.damage;
             spawnParticles(player.x, player.y, 'red', 20);
             triggerShake(20);
@@ -959,10 +992,10 @@ function spawnRandomDrop(x, y) {
         x, y,
         size: 20,
         type: randomType,
-        color: randomType === "heal" ? "#2ecc71" : (randomType === "speed" ? "#3498db" : "#e74c3c")
+        color: dropColors[randomType] || "white"
     });
 
-    if (Math.random() < 0.05) {
+    if (Math.random() < 0.01) {
         spawnLegendaryDrop(x, y);
     }
 }
@@ -970,9 +1003,9 @@ function spawnRandomDrop(x, y) {
 function spawnLegendaryDrop(x, y) {
     drops.push({
         x, y,
-        size: 30,
+        size: 40,
         type: "legendary",
-        color: "gold"
+        color: dropColors.legendary
     });
 }
 
@@ -1059,10 +1092,14 @@ function updateBots() {
                         damage = closest.hp - 1;
                     }
                     
-                    closest.hp -= damage;
-                    spawnParticles(closest.x, closest.y, (closest === player ? 'red' : (closest.color || 'white')), 10);
-                    hitEffect(closest.x, closest.y);
-                    if (closest === player) triggerShake(15);
+                    if (closest === player && player.shield) {
+                        player.shield = false;
+                    } else {
+                        closest.hp -= damage;
+                        spawnParticles(closest.x, closest.y, (closest === player ? 'red' : (closest.color || 'white')), 10);
+                        hitEffect(closest.x, closest.y);
+                        if (closest === player) triggerShake(15);
+                    }
                     bot.lastAttack = now;
                 }
             }
@@ -1141,19 +1178,54 @@ function collectDrops() {
         const dist = Math.sqrt((player.x - drop.x)**2 + (player.y - drop.y)**2);
         if (dist < player.size/2 + drop.size) {
             if (drop.type === "heal") {
-                player.hp = Math.min(player.maxHp, player.hp + 20);
+                player.hp += 25;
+                if (player.hp > player.maxHp) player.hp = player.maxHp;
             } else if (drop.type === "speed") {
-                player.baseSpeed += 0.5; // Persistent speed boost
+                player.baseSpeed += 3;
+                setTimeout(() => {
+                    player.baseSpeed -= 3;
+                }, 5000);
             } else if (drop.type === "damage") {
-                player.baseDamage += 5; // Persistent damage boost
-            } else if (drop.type === "legendary") {
-                player.hp = player.maxHp;
-                player.baseSpeed += 1;
                 player.baseDamage += 10;
-                player.size += 10;
+                setTimeout(() => {
+                    player.baseDamage -= 10;
+                }, 5000);
+            } else if (drop.type === "shield") {
+                player.shield = true;
+            } else if (drop.type === "rage") {
+                player.baseDamage += 20;
+                player.baseSpeed += 5;
+                setTimeout(() => {
+                    player.baseDamage -= 20;
+                    player.baseSpeed -= 5;
+                }, 4000);
+            } else if (drop.type === "freeze") {
+                bots.forEach(bot => {
+                    const oldSpeed = bot.speed;
+                    bot.speed = 0;
+                    setTimeout(() => {
+                        bot.speed = oldSpeed;
+                    }, 2000);
+                });
+            } else if (drop.type === "invisible") {
+                player.invisible = true;
+                setTimeout(() => {
+                    player.invisible = false;
+                }, 5000);
+            } else if (drop.type === "multiDash") {
+                player.extraDash = true;
+            } else if (drop.type === "poisonAura") {
+                player.poisonAura = true;
+            } else if (drop.type === "gold") {
+                player.gold += 100;
+            } else if (drop.type === "legendary") {
+                player.baseDamage += 50;
+                player.baseSpeed += 10;
+                player.hp += 100;
+                if (player.hp > player.maxHp) player.maxHp = player.hp;
             }
             drops.splice(i, 1);
-            spawnParticles(player.x, player.y, "gold", 15);
+            spawnParticles(player.x, player.y, dropColors[drop.type] || "gold", 15);
         }
     }
 }
@@ -1162,9 +1234,9 @@ function drawDrops() {
     drops.forEach(drop => {
         ctx.save();
         ctx.translate(drop.x, drop.y);
-        ctx.fillStyle = drop.color;
+        ctx.fillStyle = dropColors[drop.type] || "white";
         ctx.shadowBlur = 20;
-        ctx.shadowColor = "gold";
+        ctx.shadowColor = dropColors[drop.type] || "gold";
         ctx.beginPath();
         ctx.arc(0, 0, drop.size/2, 0, Math.PI * 2);
         ctx.fill();
@@ -1705,10 +1777,12 @@ function draw() {
         }
     });
 
-    entities.forEach(drawEntity);
-    drawDrops();
+    buildings.forEach(b => {
+        // ... (building draw logic)
+    });
 
-    // Draw Clones
+    drawDrops();
+    entities.forEach(drawEntity);
     clones.forEach(clone => {
         drawAnt(clone.x, clone.y, clone.size, clone.angle, clone.color, 100, 100);
     });
@@ -1799,6 +1873,7 @@ function draw() {
         ctx.restore();
     }
 
+    ctx.globalAlpha = player.invisible ? 0.3 : 1;
     if (currentSkin === 'bee') drawBee(player.x, player.y, player.size, player.angle, '#2c3e50', player.hp, player.maxHp);
     else if (currentSkin === 'ant') drawAnt(player.x, player.y, player.size, player.angle, '#2c3e50', player.hp, player.maxHp);
     else if (currentSkin === 'spider') drawSpider(player.x, player.y, player.size, player.angle, '#2c3e50', player.hp, player.maxHp);
@@ -1822,6 +1897,7 @@ function draw() {
             drawBeetle(player.x, player.y, player.size, player.angle, '#2c3e50', player.hp, player.maxHp);
         }
     }
+    ctx.globalAlpha = 1;
     
     if (player.isCharging) {
         const chargePerc = Math.min(1, player.chargeTime / 5000);
