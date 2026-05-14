@@ -14,7 +14,7 @@ body {
     width: 100%;
 }
 
-#menu-container, #skin-menu, #rebirth-menu, #matchmaking-menu, #difficulty-menu {
+#menu-container, #skin-menu, #rebirth-menu, #matchmaking-menu, #difficulty-menu, #mission-menu {
     position: relative;
     z-index: 10;
     text-align: center;
@@ -26,6 +26,73 @@ body {
     max-width: 500px;
     backdrop-filter: blur(10px);
     animation: fadeIn 0.5s ease-out;
+}
+
+.mission-item {
+    background: rgba(46, 204, 113, 0.1);
+    border: 1px solid #2ecc71;
+    padding: 20px;
+    border-radius: 15px;
+    margin-bottom: 20px;
+}
+
+#unlock-animation {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.9);
+    z-index: 1000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    animation: overlayFade 0.5s forwards;
+}
+
+.unlock-content {
+    text-align: center;
+    animation: unlockPop 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+.unlock-title {
+    color: #f1c40f;
+    font-size: 48px;
+    text-shadow: 0 0 20px rgba(241, 196, 15, 0.6);
+}
+
+.scorpion-preview {
+    width: 200px;
+    height: 200px;
+    background: url('https://img.icons8.com/color/200/scorpion.png') no-repeat center/contain;
+    margin: 30px auto;
+    filter: drop-shadow(0 0 15px #9b59b2);
+    animation: float 2s infinite ease-in-out;
+}
+
+@keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-20px); }
+}
+
+@keyframes overlayFade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes unlockPop {
+    from { transform: scale(0.5); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+}
+
+#mission-back-btn {
+    background: #7f8c8d;
+}
+
+#close-unlock-btn {
+    background: linear-gradient(135deg, #9b59b2 0%, #8e44ad 100%);
+    width: auto;
+    padding: 15px 40px;
 }
 
 .loader {

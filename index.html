@@ -14,6 +14,7 @@
         <h1>Robale</h1>
         <button id="main-play-btn" onclick="document.getElementById('menu-container').classList.add('hidden'); document.getElementById('difficulty-menu').classList.remove('hidden');">Graj Teraz</button>
         <button id="skin-btn">Sklep ze Skórkami</button>
+        <button id="mission-btn">Misje</button>
         <button id="rebirth-btn">Prestiż: <span id="rebirth-count">0/2</span></button>
     </div>
 
@@ -43,6 +44,26 @@
         <button id="rebirth-back-btn">Powrót</button>
     </div>
 
+    <div id="mission-menu" class="hidden">
+        <h2>Misje i Wyzwania</h2>
+        <div class="mission-item">
+            <h3>Władca Koszmarów</h3>
+            <p>Wygraj 3 razy na Trudnym poziomie trudności.</p>
+            <p>Postęp: <span id="hard-wins-count">0</span>/3</p>
+            <p style="color: #f1c40f;">Nagroda: Skórka Skorpiona (DARMO!)</p>
+        </div>
+        <button id="mission-back-btn">Powrót</button>
+    </div>
+
+    <div id="unlock-animation" class="hidden">
+        <div class="unlock-content">
+            <h1 class="unlock-title">NOWA SKÓRKA!</h1>
+            <div class="scorpion-preview"></div>
+            <h2>SKORPION ODBLOKOWANY</h2>
+            <button id="close-unlock-btn">Wspaniale!</button>
+        </div>
+    </div>
+
     <div id="skin-menu" class="hidden">
         <h2>Garderoba</h2>
         <div id="skin-list" style="display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; margin-bottom: 20px;">
@@ -65,6 +86,11 @@
                 <h3>Pszczoła</h3>
                 <p style="font-size: 14px; color: #f1c40f;">+200% DMG & +150% Speed</p>
                 <button id="buy-bee-btn">Kup (1500 pkt)</button>
+            </div>
+            <div class="skin-item scorpion-item">
+                <h3>Skorpion</h3>
+                <p style="font-size: 14px; color: #9b59b2;">ELITARNY: Toksyczna Superatak</p>
+                <button id="buy-scorpion-btn">Kup (5000 pkt)</button>
             </div>
         </div>
         <button id="back-btn">Powrót</button>
