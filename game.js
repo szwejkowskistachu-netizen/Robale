@@ -167,9 +167,13 @@ function spawnParticles(x, y, color, count = 10, speed = 5) {
 
 function worldToScreen(x, y) {
     const baseZoom = 1.0;
-    const screenScale = canvas ? canvas.width / 1600 : 1; 
-    const autoZoom = Math.max(0.1, (baseZoom / (1 + (player.size - 45) * 0.001))) * screenScale;
-    const zoom = autoZoom * manualZoom;
+    let autoZoom;
+    if (player.size <= 200) {
+        autoZoom = baseZoom / (1 + (player.size - 45) * 0.0005); 
+    } else {
+        autoZoom = baseZoom / (1 + (200 - 45) * 0.0005 + (player.size - 200) * 0.008);
+    }
+    const zoom = Math.max(0.05, autoZoom * manualZoom);
     const camX = player.x;
     const camY = player.y;
     return {
@@ -1917,9 +1921,13 @@ function drawEntity(e) {
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     const baseZoom = 1.0;
-    const screenScale = canvas ? canvas.width / 1600 : 1; 
-    const autoZoom = Math.max(0.1, (baseZoom / (1 + (player.size - 45) * 0.001))) * screenScale;
-    const zoom = autoZoom * manualZoom;
+    let autoZoom;
+    if (player.size <= 200) {
+        autoZoom = baseZoom / (1 + (player.size - 45) * 0.0005); 
+    } else {
+        autoZoom = baseZoom / (1 + (200 - 45) * 0.0005 + (player.size - 200) * 0.008);
+    }
+    const zoom = Math.max(0.05, autoZoom * manualZoom);
     ctx.fillStyle = '#1e1e1e'; // Brighter background
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
