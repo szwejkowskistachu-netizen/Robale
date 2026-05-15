@@ -350,16 +350,24 @@ button:active {
     z-index: 200;
 }
 
-#draggable-line {
+#zoom-slider-container {
     position: fixed;
+    right: 20px;
     top: 50%;
-    left: 0;
-    width: 100%;
-    height: 5px;
-    background: linear-gradient(90deg, transparent, #ff0000, transparent);
-    cursor: ns-resize;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background: rgba(0,0,0,0.5);
+    padding: 10px;
+    border-radius: 10px;
     z-index: 10000;
-    box-shadow: 0 0 10px rgba(255, 0, 0, 0.5);
+}
+
+#zoom-slider {
+    appearance: slider-vertical;
+    width: 20px;
+    height: 200px;
 }
 
 @keyframes hit{

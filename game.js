@@ -167,7 +167,8 @@ function spawnParticles(x, y, color, count = 10, speed = 5) {
 
 function worldToScreen(x, y) {
     const baseZoom = 1.0;
-    const zoom = Math.max(0.3, baseZoom / (1 + (player.size - 45) * 0.003));
+    const autoZoom = Math.max(0.1, baseZoom / (1 + (player.size - 45) * 0.001));
+    const zoom = autoZoom * manualZoom;
     const camX = player.x;
     const camY = player.y;
     return {
@@ -676,14 +677,17 @@ function generateCity() {
 
     for (let x = 0; x < WORLD_SIZE; x += blockSize) {
         for (let y = 0; y < WORLD_SIZE; y += blockSize) {
-            if (Math.random() > 0.4 && (Math.abs(x - 500) > 300 || Math.abs(y - 500) > 300)) {
+            if (Math.random() > 0.3 && (Math.abs(x - 500) > 300 || Math.abs(y - 500) > 300)) {
+                const buildingWidth = blockSize - padding;
+                const buildingHeight = blockSize - padding;
                 buildings.push({
                     x: x + padding / 2,
                     y: y + padding / 2,
-                    w: blockSize - padding,
-                    h: blockSize - padding,
-                    color: `rgb(${30 + Math.random() * 20}, ${30 + Math.random() * 20}, ${35 + Math.random() * 25})`,
-                    roofStyle: Math.floor(Math.random() * 3)
+                    w: buildingWidth,
+                    h: buildingHeight,
+                    color: `rgb(${20 + Math.random() * 30}, ${20 + Math.random() * 30}, ${25 + Math.random() * 35})`,
+                    roofStyle: Math.floor(Math.random() * 4),
+                    windows: Array.from({length: 8}, () => Math.random() > 0.5)
                 });
             }
         }
@@ -1912,7 +1916,8 @@ function drawEntity(e) {
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     const baseZoom = 1.0;
-    const zoom = Math.max(0.3, baseZoom / (1 + (player.size - 45) * 0.003));
+    const autoZoom = Math.max(0.1, baseZoom / (1 + (player.size - 45) * 0.001));
+    const zoom = autoZoom * manualZoom;
     ctx.fillStyle = '#1e1e1e'; // Brighter background
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
@@ -1930,13 +1935,23 @@ function draw() {
     ctx.scale(zoom, zoom);
     ctx.translate(-camX, -camY);
 
-    // Draw Grid
-    ctx.strokeStyle = '#333'; // Brighter grid
-    ctx.lineWidth = 2;
-    for(let i = 0; i <= WORLD_SIZE; i += 200) { // Denser grid
+    // Draw Grid (Roads)
+    ctx.strokeStyle = '#222';
+    ctx.lineWidth = 40; // Road width
+    for(let i = 0; i <= WORLD_SIZE; i += 400) {
         ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, WORLD_SIZE); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(WORLD_SIZE, i); ctx.stroke();
     }
+
+    // Road markings
+    ctx.strokeStyle = '#444';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([20, 20]);
+    for(let i = 0; i <= WORLD_SIZE; i += 400) {
+        ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, WORLD_SIZE); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(WORLD_SIZE, i); ctx.stroke();
+    }
+    ctx.setLineDash([]);
     
     // World Border
     ctx.strokeStyle = '#2ecc71';
@@ -1985,25 +2000,44 @@ function draw() {
     ctx.globalAlpha = 1.0;
 
     buildings.forEach(b => {
-        ctx.fillStyle = 'rgba(0,0,0,0.5)';
-        ctx.fillRect(b.x + 15, b.y + 15, b.w, b.h);
+        // Shadow
+        ctx.fillStyle = 'rgba(0,0,0,0.4)';
+        ctx.fillRect(b.x + 10, b.y + 10, b.w, b.h);
+        
+        // Main Body
         ctx.fillStyle = b.color;
         ctx.fillRect(b.x, b.y, b.w, b.h);
-        ctx.strokeStyle = 'rgba(255,255,255,0.05)';
-        ctx.lineWidth = 2;
+        
+        // Windows
+        ctx.fillStyle = 'rgba(255, 255, 100, 0.3)';
+        const winSize = b.w / 6;
+        for(let i=0; i<4; i++) {
+            for(let j=0; j<4; j++) {
+                if ((i+j) % 2 === 0) {
+                    ctx.fillRect(b.x + 10 + i * winSize, b.y + 10 + j * winSize, winSize/2, winSize/2);
+                }
+            }
+        }
+
+        // Roof Detail
+        ctx.strokeStyle = 'rgba(255,255,255,0.1)';
         ctx.strokeRect(b.x + 5, b.y + 5, b.w - 10, b.h - 10);
+        
         if (b.roofStyle === 0) {
-            ctx.fillStyle = 'rgba(0,0,0,0.3)';
+            ctx.fillStyle = 'rgba(0,0,0,0.2)';
             ctx.fillRect(b.x + b.w/4, b.y + b.h/4, b.w/2, b.h/2);
         } else if (b.roofStyle === 1) {
-            ctx.fillStyle = 'rgba(0,0,0,0.2)';
-            ctx.beginPath(); ctx.arc(b.x + b.w/2, b.y + b.h/2, b.w/3, 0, Math.PI * 2); ctx.fill();
-        }
-        ctx.fillStyle = 'rgba(255,255,100,0.1)';
-        for(let wx = b.x + 30; wx < b.x + b.w - 30; wx += 60) {
-            for(let wy = b.y + 30; wy < b.y + b.h - 30; wy += 60) {
-                ctx.fillRect(wx, wy, 20, 20);
+            ctx.fillStyle = '#333';
+            ctx.beginPath(); ctx.arc(b.x + b.w/2, b.y + b.h/2, b.w/4, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = 'red'; // Warning light
+            if (Date.now() % 1000 > 500) {
+                ctx.beginPath(); ctx.arc(b.x + b.w/2, b.y + b.h/2, 5, 0, Math.PI * 2); ctx.fill();
             }
+        } else if (b.roofStyle === 2) {
+            ctx.fillStyle = 'rgba(255,255,255,0.1)';
+            ctx.font = 'bold 20px Arial';
+            ctx.fillText("H", b.x + b.w/2 - 7, b.y + b.h/2 + 7);
+            ctx.strokeRect(b.x + b.w/2 - 15, b.y + b.h/2 - 15, 30, 30);
         }
     });
 
@@ -2141,42 +2175,13 @@ function gameLoop(timestamp) {
     requestAnimationFrame(gameLoop);
 }
 
-// Draggable line logic
-const dragLine = document.getElementById('draggable-line');
-let isDraggingLine = false;
+// Zoom slider logic
+const zoomSlider = document.getElementById('zoom-slider');
+let manualZoom = 1.0;
 
-if (dragLine) {
-    dragLine.addEventListener('mousedown', () => {
-        isDraggingLine = true;
-        dragLine.style.background = 'linear-gradient(90deg, transparent, #00ff00, transparent)';
-    });
-
-    window.addEventListener('mousemove', (e) => {
-        if (isDraggingLine) {
-            dragLine.style.top = e.clientY + 'px';
-        }
-    });
-
-    window.addEventListener('mouseup', () => {
-        isDraggingLine = false;
-        if (dragLine) dragLine.style.background = 'linear-gradient(90deg, transparent, #ff0000, transparent)';
-    });
-
-    // Touch support for mobile
-    dragLine.addEventListener('touchstart', (e) => {
-        isDraggingLine = true;
-        dragLine.style.background = 'linear-gradient(90deg, transparent, #00ff00, transparent)';
-    });
-
-    window.addEventListener('touchmove', (e) => {
-        if (isDraggingLine && e.touches[0]) {
-            dragLine.style.top = e.touches[0].clientY + 'px';
-        }
-    }, { passive: false });
-
-    window.addEventListener('touchend', () => {
-        isDraggingLine = false;
-        if (dragLine) dragLine.style.background = 'linear-gradient(90deg, transparent, #ff0000, transparent)';
+if (zoomSlider) {
+    zoomSlider.addEventListener('input', (e) => {
+        manualZoom = parseFloat(e.target.value);
     });
 }
 
