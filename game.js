@@ -175,7 +175,7 @@ function worldToScreen(x, y) {
     }
     const zoom = Math.max(0.05, autoZoom * manualZoom);
     const camX = player.x;
-    const camY = player.y;
+    const camY = player.y + cameraOffsetY;
     return {
         x: (x - camX) * zoom + canvas.width / 2,
         y: (y - camY) * zoom + canvas.height / 2
@@ -1932,7 +1932,7 @@ function draw() {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
     let camX = player.x;
-    let camY = player.y;
+    let camY = player.y + cameraOffsetY;
 
     // Apply Screen Shake
     if (screenShake > 0) {
@@ -2185,20 +2185,21 @@ function gameLoop(timestamp) {
     requestAnimationFrame(gameLoop);
 }
 
-// Side draggable line logic (Zoom)
+// Side draggable line logic (Camera Offset)
 const sideDragLine = document.getElementById('side-drag-line');
 const dragHandle = sideDragLine ? sideDragLine.querySelector('.drag-handle') : null;
-let manualZoom = 1.0;
+let cameraOffsetY = 0;
+let manualZoom = 1.0; // Keeping manualZoom at 1.0 default
 let isDraggingSideLine = false;
 
 if (sideDragLine && dragHandle) {
-    const updateZoomFromPos = (clientY) => {
+    const updateOffsetFromPos = (clientY) => {
         const rect = sideDragLine.getBoundingClientRect();
         let relativeY = (clientY - rect.top) / rect.height;
         relativeY = Math.max(0, Math.min(1, relativeY));
         
-        // Invert so dragging up zooms in, dragging down zooms out
-        manualZoom = 0.2 + (1 - relativeY) * 1.8; 
+        // Offset range: -500 to 500 pixels
+        cameraOffsetY = (relativeY - 0.5) * 1000; 
         dragHandle.style.top = (relativeY * 100) + '%';
         dragHandle.style.transform = 'translateY(-50%)';
     };
@@ -2206,13 +2207,13 @@ if (sideDragLine && dragHandle) {
     const onStart = (e) => {
         isDraggingSideLine = true;
         const y = e.touches ? e.touches[0].clientY : e.clientY;
-        updateZoomFromPos(y);
+        updateOffsetFromPos(y);
     };
 
     const onMove = (e) => {
         if (!isDraggingSideLine) return;
         const y = e.touches ? e.touches[0].clientY : e.clientY;
-        updateZoomFromPos(y);
+        updateOffsetFromPos(y);
     };
 
     const onEnd = () => {
