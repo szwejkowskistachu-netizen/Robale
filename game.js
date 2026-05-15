@@ -173,9 +173,13 @@ function worldToScreen(x, y) {
     } else {
         autoZoom = baseZoom / (1 + (200 - 45) * 0.0005 + (player.size - 200) * 0.008);
     }
-    const zoom = Math.max(0.05, autoZoom * manualZoom);
+    
+    // Clamp zoom to prevent seeing past world borders ("pustka")
+    const minZoom = Math.max(canvas.width / WORLD_SIZE, canvas.height / WORLD_SIZE);
+    const zoom = Math.max(minZoom, autoZoom * manualZoom);
+
     const camX = player.x;
-    const camY = player.y + cameraOffsetY;
+    const camY = player.y + (cameraOffsetY / zoom); // Compensate for zoom
     return {
         x: (x - camX) * zoom + canvas.width / 2,
         y: (y - camY) * zoom + canvas.height / 2
@@ -1927,18 +1931,28 @@ function draw() {
     } else {
         autoZoom = baseZoom / (1 + (200 - 45) * 0.0005 + (player.size - 200) * 0.008);
     }
-    const zoom = Math.max(0.05, autoZoom * manualZoom);
+
+    // Clamp zoom to prevent seeing past world borders ("pustka")
+    const minZoom = Math.max(canvas.width / WORLD_SIZE, canvas.height / WORLD_SIZE);
+    const zoom = Math.max(minZoom, autoZoom * manualZoom);
+
     ctx.fillStyle = '#1e1e1e'; // Brighter background
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
     let camX = player.x;
-    let camY = player.y + cameraOffsetY;
+    let camY = player.y + (cameraOffsetY / zoom); // Compensate for zoom
 
     // Apply Screen Shake
     if (screenShake > 0) {
         camX += (Math.random() - 0.5) * screenShake;
         camY += (Math.random() - 0.5) * screenShake;
     }
+
+    // Clamp camera position to stay within world bounds (considering zoom)
+    const viewW = canvas.width / zoom;
+    const viewH = canvas.height / zoom;
+    camX = Math.max(viewW/2, Math.min(WORLD_SIZE - viewW/2, camX));
+    camY = Math.max(viewH/2, Math.min(WORLD_SIZE - viewH/2, camY));
 
     ctx.save();
     ctx.translate(canvas.width / 2, canvas.height / 2);
