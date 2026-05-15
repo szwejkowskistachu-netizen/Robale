@@ -350,31 +350,6 @@ button:active {
     z-index: 200;
 }
 
-#side-drag-line {
-    position: fixed;
-    right: 10px;
-    top: 10%;
-    height: 80%;
-    width: 10px;
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 5px;
-    z-index: 10000;
-    cursor: ns-resize;
-    touch-action: none;
-}
-
-.drag-handle {
-    position: absolute;
-    left: -10px;
-    top: 50%;
-    width: 30px;
-    height: 60px;
-    background: #2ecc71;
-    border-radius: 5px;
-    box-shadow: 0 0 15px rgba(46, 204, 113, 0.5);
-    border: 2px solid white;
-}
-
 @keyframes hit{
     from{
         transform:scale(2);

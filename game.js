@@ -148,7 +148,7 @@ const bots = [];
 const particles = [];
 const poisonPuddles = [];
 let screenShake = 0;
-const WORLD_SIZE = 4000;
+const WORLD_SIZE = 5000;
 
 function spawnParticles(x, y, color, count = 10, speed = 5) {
     for (let i = 0; i < count; i++) {
@@ -174,12 +174,17 @@ function worldToScreen(x, y) {
         autoZoom = baseZoom / (1 + (200 - 45) * 0.0005 + (player.size - 200) * 0.008);
     }
     
-    // Clamp zoom to prevent seeing past world borders ("pustka")
     const minZoom = Math.max(canvas.width / WORLD_SIZE, canvas.height / WORLD_SIZE);
-    const zoom = Math.max(minZoom, autoZoom * manualZoom);
+    const zoom = Math.max(minZoom, autoZoom);
 
-    const camX = player.x;
-    const camY = player.y + (cameraOffsetY / zoom); // Compensate for zoom
+    let camX = player.x;
+    let camY = player.y;
+
+    const viewW = canvas.width / zoom;
+    const viewH = canvas.height / zoom;
+    camX = Math.max(viewW/2, Math.min(WORLD_SIZE - viewW/2, camX));
+    camY = Math.max(viewH/2, Math.min(WORLD_SIZE - viewH/2, camY));
+
     return {
         x: (x - camX) * zoom + canvas.width / 2,
         y: (y - camY) * zoom + canvas.height / 2
@@ -1934,13 +1939,13 @@ function draw() {
 
     // Clamp zoom to prevent seeing past world borders ("pustka")
     const minZoom = Math.max(canvas.width / WORLD_SIZE, canvas.height / WORLD_SIZE);
-    const zoom = Math.max(minZoom, autoZoom * manualZoom);
+    const zoom = Math.max(minZoom, autoZoom);
 
     ctx.fillStyle = '#1e1e1e'; // Brighter background
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
     let camX = player.x;
-    let camY = player.y + (cameraOffsetY / zoom); // Compensate for zoom
+    let camY = player.y;
 
     // Apply Screen Shake
     if (screenShake > 0) {
@@ -2197,51 +2202,6 @@ function gameLoop(timestamp) {
         console.error("Critical error in game loop:", e);
     }
     requestAnimationFrame(gameLoop);
-}
-
-// Side draggable line logic (Camera Offset)
-const sideDragLine = document.getElementById('side-drag-line');
-const dragHandle = sideDragLine ? sideDragLine.querySelector('.drag-handle') : null;
-let cameraOffsetY = 0;
-let manualZoom = 1.0; // Keeping manualZoom at 1.0 default
-let isDraggingSideLine = false;
-
-if (sideDragLine && dragHandle) {
-    const updateOffsetFromPos = (clientY) => {
-        const rect = sideDragLine.getBoundingClientRect();
-        let relativeY = (clientY - rect.top) / rect.height;
-        relativeY = Math.max(0, Math.min(1, relativeY));
-        
-        // Inverting logic: drag down -> camera moves UP (image moves DOWN)
-        // Offset range: -2000 to 2000 pixels
-        cameraOffsetY = (0.5 - relativeY) * 4000; 
-        dragHandle.style.top = (relativeY * 100) + '%';
-        dragHandle.style.transform = 'translateY(-50%)';
-    };
-
-    const onStart = (e) => {
-        isDraggingSideLine = true;
-        const y = e.touches ? e.touches[0].clientY : e.clientY;
-        updateOffsetFromPos(y);
-    };
-
-    const onMove = (e) => {
-        if (!isDraggingSideLine) return;
-        const y = e.touches ? e.touches[0].clientY : e.clientY;
-        updateOffsetFromPos(y);
-    };
-
-    const onEnd = () => {
-        isDraggingSideLine = false;
-    };
-
-    sideDragLine.addEventListener('mousedown', onStart);
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onEnd);
-
-    sideDragLine.addEventListener('touchstart', onStart, { passive: false });
-    window.addEventListener('touchmove', onMove, { passive: false });
-    window.addEventListener('touchend', onEnd);
 }
 
 loadGame();
