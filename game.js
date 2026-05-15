@@ -167,7 +167,8 @@ function spawnParticles(x, y, color, count = 10, speed = 5) {
 
 function worldToScreen(x, y) {
     const baseZoom = 1.0;
-    const autoZoom = Math.max(0.1, baseZoom / (1 + (player.size - 45) * 0.001));
+    const screenScale = canvas ? canvas.width / 1600 : 1; 
+    const autoZoom = Math.max(0.1, (baseZoom / (1 + (player.size - 45) * 0.001))) * screenScale;
     const zoom = autoZoom * manualZoom;
     const camX = player.x;
     const camY = player.y;
@@ -1916,7 +1917,8 @@ function drawEntity(e) {
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     const baseZoom = 1.0;
-    const autoZoom = Math.max(0.1, baseZoom / (1 + (player.size - 45) * 0.001));
+    const screenScale = canvas ? canvas.width / 1600 : 1; 
+    const autoZoom = Math.max(0.1, (baseZoom / (1 + (player.size - 45) * 0.001))) * screenScale;
     const zoom = autoZoom * manualZoom;
     ctx.fillStyle = '#1e1e1e'; // Brighter background
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -2175,14 +2177,47 @@ function gameLoop(timestamp) {
     requestAnimationFrame(gameLoop);
 }
 
-// Zoom slider logic
-const zoomSlider = document.getElementById('zoom-slider');
+// Side draggable line logic (Zoom)
+const sideDragLine = document.getElementById('side-drag-line');
+const dragHandle = sideDragLine ? sideDragLine.querySelector('.drag-handle') : null;
 let manualZoom = 1.0;
+let isDraggingSideLine = false;
 
-if (zoomSlider) {
-    zoomSlider.addEventListener('input', (e) => {
-        manualZoom = parseFloat(e.target.value);
-    });
+if (sideDragLine && dragHandle) {
+    const updateZoomFromPos = (clientY) => {
+        const rect = sideDragLine.getBoundingClientRect();
+        let relativeY = (clientY - rect.top) / rect.height;
+        relativeY = Math.max(0, Math.min(1, relativeY));
+        
+        // Invert so dragging up zooms in, dragging down zooms out
+        manualZoom = 0.2 + (1 - relativeY) * 1.8; 
+        dragHandle.style.top = (relativeY * 100) + '%';
+        dragHandle.style.transform = 'translateY(-50%)';
+    };
+
+    const onStart = (e) => {
+        isDraggingSideLine = true;
+        const y = e.touches ? e.touches[0].clientY : e.clientY;
+        updateZoomFromPos(y);
+    };
+
+    const onMove = (e) => {
+        if (!isDraggingSideLine) return;
+        const y = e.touches ? e.touches[0].clientY : e.clientY;
+        updateZoomFromPos(y);
+    };
+
+    const onEnd = () => {
+        isDraggingSideLine = false;
+    };
+
+    sideDragLine.addEventListener('mousedown', onStart);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onEnd);
+
+    sideDragLine.addEventListener('touchstart', onStart, { passive: false });
+    window.addEventListener('touchmove', onMove, { passive: false });
+    window.addEventListener('touchend', onEnd);
 }
 
 loadGame();

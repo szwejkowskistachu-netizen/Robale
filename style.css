@@ -350,24 +350,29 @@ button:active {
     z-index: 200;
 }
 
-#zoom-slider-container {
+#side-drag-line {
     position: fixed;
-    right: 20px;
-    top: 50%;
-    transform: translateY(-50%);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    background: rgba(0,0,0,0.5);
-    padding: 10px;
-    border-radius: 10px;
+    right: 10px;
+    top: 10%;
+    height: 80%;
+    width: 10px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 5px;
     z-index: 10000;
+    cursor: ns-resize;
+    touch-action: none;
 }
 
-#zoom-slider {
-    appearance: slider-vertical;
-    width: 20px;
-    height: 200px;
+.drag-handle {
+    position: absolute;
+    left: -10px;
+    top: 50%;
+    width: 30px;
+    height: 60px;
+    background: #2ecc71;
+    border-radius: 5px;
+    box-shadow: 0 0 15px rgba(46, 204, 113, 0.5);
+    border: 2px solid white;
 }
 
 @keyframes hit{
