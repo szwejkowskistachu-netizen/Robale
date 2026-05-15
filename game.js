@@ -2198,8 +2198,9 @@ if (sideDragLine && dragHandle) {
         let relativeY = (clientY - rect.top) / rect.height;
         relativeY = Math.max(0, Math.min(1, relativeY));
         
-        // Offset range: -500 to 500 pixels
-        cameraOffsetY = (relativeY - 0.5) * 1000; 
+        // Inverting logic: drag down -> camera moves UP (image moves DOWN)
+        // Offset range: -2000 to 2000 pixels
+        cameraOffsetY = (0.5 - relativeY) * 4000; 
         dragHandle.style.top = (relativeY * 100) + '%';
         dragHandle.style.transform = 'translateY(-50%)';
     };
