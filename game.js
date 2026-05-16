@@ -306,22 +306,12 @@ function updateHardWinsUI() {
 
 function resizeCanvas() {
     if (canvas) {
-        let width = window.innerWidth;
-        let height = window.innerHeight;
-        const ratio = 16 / 9;
-        
-        if (width / height > ratio) {
-            width = height * ratio;
-        } else {
-            height = width / ratio;
-        }
-        
-        canvas.width = width;
-        canvas.height = height;
-        canvas.style.width = width + 'px';
-        canvas.style.height = height + 'px';
-        canvas.style.left = (window.innerWidth - width) / 2 + 'px';
-        canvas.style.top = (window.innerHeight - height) / 2 + 'px';
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        canvas.style.width = window.innerWidth + 'px';
+        canvas.style.height = window.innerHeight + 'px';
+        canvas.style.left = '0px';
+        canvas.style.top = '0px';
         canvas.style.position = 'fixed';
     }
 }
